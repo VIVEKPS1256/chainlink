@@ -326,6 +326,7 @@ func BuildAddDONArgs(
 			schedule,
 			oracles,
 			encodedOffchainConfig,
+			nil, // maxDurationInitialization
 			MaxDurationQuery,
 			MaxDurationObservation,
 			MaxDurationShouldAcceptAttestedReport,
