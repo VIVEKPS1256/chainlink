@@ -217,6 +217,7 @@ func (c *channelDefinitionCache) readLogs(ctx context.Context) (err error) {
 	}
 
 	// NOTE: We assume that log poller returns logs in order of block_num, log_index ASC
+	// TODO: Should filter with DON ID (also check register filter call)
 	logs, err := c.lp.LogsWithSigs(ctx, fromBlock, toBlock, allTopics, c.addr)
 	if err != nil {
 		return err
