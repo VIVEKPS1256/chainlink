@@ -60,24 +60,24 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	lggr := logger.TestLogger(t)
 	lggr.SetLogLevel(TestLogLevel)
 
-	ethBlockchain := setupBlockchain(t, 1000, 1*time.Second)
-	capabilitiesRegistryAddr := setupCapabilitiesRegistryContract(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, ethBlockchain)
-	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
-	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
-	libocr := NewMockLibOCR(t, workflowDonInfo.F, 1*time.Second)
+	ethBlockchain := NewEthBlockchain(t, 1000, 1*time.Second)
+
 	msgBroker := NewTestAsyncMessageBroker(t, 1000)
 
 	servicetest.Run(t, msgBroker)
 	servicetest.Run(t, ethBlockchain)
-	servicetest.Run(t, libocr)
+
+	capabilitiesRegistryAddr := setupCapabilitiesRegistryContract(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, ethBlockchain)
+	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
+	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
 
 	sink := NewReportsSink()
 
 	createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
 
-	createTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
+	createWriteTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
 
-	workflowDonNodes := createWorkflowDON(ctx, t, lggr, workflowDonInfo, msgBroker, libocr,
+	workflowDonNodes := createWorkflowDON(ctx, t, lggr, workflowDonInfo, msgBroker,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
 		ethBlockchain, capabilitiesRegistryAddr)
 
@@ -87,56 +87,66 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	return consumer, sink
 }
 
-func createWorkflowDON(ctx context.Context, t *testing.T, lggr logger.Logger, workflowDon DonInfo, broker *testAsyncMessageBroker, libocr *MockLibOCR,
-	capabilityDONs []commoncap.DON, simulatedEthBlockchain *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
-	var workflowNodes []*cltest.TestApplication
-	for i, workflowPeer := range workflowDon.Members {
-		workflowPeerDispatcher := broker.NewDispatcherForNode(workflowPeer)
+func createWorkflowDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
+	capabilityDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
+
+	libocr := NewMockLibOCR(t, donInfo.F, 1*time.Second)
+	servicetest.Run(t, libocr)
+
+	var nodes []*cltest.TestApplication
+	for i, member := range donInfo.Members {
+		dispatcher := broker.NewDispatcherForNode(member)
 		capabilityRegistry := capabilities.NewRegistry(lggr)
 
-		requestTimeout := 10 * time.Minute
-		cfg := ocr3.Config{
-			Logger:            lggr,
-			EncoderFactory:    capabilities.NewEncoder,
-			AggregatorFactory: capabilities.NewAggregator,
-			RequestTimeout:    &requestTimeout,
-		}
-
-		ocr3Capability := ocr3.NewOCR3(cfg)
-		servicetest.Run(t, ocr3Capability)
-
-		pluginCfg := coretypes.ReportingPluginServiceConfig{}
-		pluginFactory, err := ocr3Capability.NewReportingPluginFactory(ctx, pluginCfg, nil,
-			nil, nil, nil, capabilityRegistry, nil, nil)
-		require.NoError(t, err)
-
-		repConfig := ocr3types.ReportingPluginConfig{
-			F: int(workflowDon.F),
-		}
-		plugin, _, err := pluginFactory.NewReportingPlugin(repConfig)
-		require.NoError(t, err)
-
-		transmitter := ocr3.NewContractTransmitter(lggr, capabilityRegistry, "")
-
-		libocr.AddNode(plugin, transmitter, workflowDon.KeyBundles[i])
+		addOCR3Capability(ctx, t, lggr, capabilityRegistry, libocr, donInfo.F, donInfo.KeyBundles[i])
 
 		nodeInfo := commoncap.Node{
-			PeerID:         &workflowPeer,
-			WorkflowDON:    workflowDon.DON,
+			PeerID:         &member,
+			WorkflowDON:    donInfo.DON,
 			CapabilityDONs: capabilityDONs,
 		}
 
-		workflowNode := startNewNode(ctx, t, lggr.Named("Workflow-"+strconv.Itoa(i)), nodeInfo, simulatedEthBlockchain, capRegistryAddr, workflowPeerDispatcher,
-			testPeerWrapper{peer: testPeer{workflowPeer}}, capabilityRegistry, nil,
-			workflowDon.keys[i])
+		node := startNewNode(ctx, t, lggr.Named("Workflow-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
+			testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
+			donInfo.keys[i], nil)
 
-		require.NoError(t, workflowNode.Start(testutils.Context(t)))
-		workflowNodes = append(workflowNodes, workflowNode)
+		require.NoError(t, node.Start(testutils.Context(t)))
+		nodes = append(nodes, node)
 	}
-	return workflowNodes
+
+	return nodes
 }
 
-func createTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger, targetDon DonInfo, broker *testAsyncMessageBroker,
+func addOCR3Capability(ctx context.Context, t *testing.T, lggr logger.Logger, capabilityRegistry *capabilities.Registry,
+	libocr *MockLibOCR, donF uint8, ocr2KeyBundle ocr2key.KeyBundle) {
+	requestTimeout := 10 * time.Minute
+	cfg := ocr3.Config{
+		Logger:            lggr,
+		EncoderFactory:    capabilities.NewEncoder,
+		AggregatorFactory: capabilities.NewAggregator,
+		RequestTimeout:    &requestTimeout,
+	}
+
+	ocr3Capability := ocr3.NewOCR3(cfg)
+	servicetest.Run(t, ocr3Capability)
+
+	pluginCfg := coretypes.ReportingPluginServiceConfig{}
+	pluginFactory, err := ocr3Capability.NewReportingPluginFactory(ctx, pluginCfg, nil,
+		nil, nil, nil, capabilityRegistry, nil, nil)
+	require.NoError(t, err)
+
+	repConfig := ocr3types.ReportingPluginConfig{
+		F: int(donF),
+	}
+	plugin, _, err := pluginFactory.NewReportingPlugin(repConfig)
+	require.NoError(t, err)
+
+	transmitter := ocr3.NewContractTransmitter(lggr, capabilityRegistry, "")
+
+	libocr.AddNode(plugin, transmitter, ocr2KeyBundle)
+}
+
+func createWriteTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger, targetDon DonInfo, broker *testAsyncMessageBroker,
 	ethBlockchain *ethBlockchain, capRegistryAddr common.Address, forwarderAddr common.Address) []*cltest.TestApplication {
 	var targetNodes []*cltest.TestApplication
 	for i, targetPeer := range targetDon.Members {
@@ -148,8 +158,12 @@ func createTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger, targ
 		capabilityRegistry := capabilities.NewRegistry(lggr)
 
 		targetNode := startNewNode(ctx, t, lggr.Named("Target-"+strconv.Itoa(i)), nodeInfo, ethBlockchain, capRegistryAddr, targetPeerDispatcher,
-			testPeerWrapper{peer: testPeer{targetPeer}}, capabilityRegistry, &forwarderAddr,
-			targetDon.keys[i])
+			testPeerWrapper{peer: testPeer{targetPeer}}, capabilityRegistry,
+			targetDon.keys[i], func(c *chainlink.Config) {
+				eip55Address := types.EIP55AddressFromAddress(forwarderAddr)
+				c.EVM[0].Chain.Workflow.ForwarderAddress = &eip55Address
+				c.EVM[0].Chain.Workflow.FromAddress = &targetDon.keys[i].EIP55Address
+			})
 
 		require.NoError(t, targetNode.Start(testutils.Context(t)))
 		targetNodes = append(targetNodes, targetNode)
@@ -172,8 +186,8 @@ func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, rep
 		require.NoError(t, err)
 
 		triggerNode := startNewNode(ctx, t, lggr.Named("Trigger-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, triggerPeerDispatcher,
-			testPeerWrapper{peer: testPeer{triggerPeer}}, capabilityRegistry, nil,
-			triggerDon.keys[i])
+			testPeerWrapper{peer: testPeer{triggerPeer}}, capabilityRegistry,
+			triggerDon.keys[i], nil)
 
 		require.NoError(t, triggerNode.Start(testutils.Context(t)))
 		triggerNodes = append(triggerNodes, triggerNode)
@@ -187,21 +201,19 @@ func startNewNode(ctx context.Context,
 	dispatcher remotetypes.Dispatcher,
 	peerWrapper p2ptypes.PeerWrapper,
 	localCapabilities *capabilities.Registry,
-	forwarderAddress *common.Address,
 	keyV2 ethkey.KeyV2,
+	setupCfg func(c *chainlink.Config),
+
 ) *cltest.TestApplication {
 	config, _ := heavyweight.FullTestDBV2(t, func(c *chainlink.Config, s *chainlink.Secrets) {
 		c.Capabilities.ExternalRegistry.ChainID = ptr(fmt.Sprintf("%d", testutils.SimulatedChainID))
 		c.Capabilities.ExternalRegistry.Address = ptr(capRegistryAddr.String())
 		c.Capabilities.Peering.V2.Enabled = ptr(true)
-
-		if forwarderAddress != nil {
-			eip55Address := types.EIP55AddressFromAddress(*forwarderAddress)
-			c.EVM[0].Chain.Workflow.ForwarderAddress = &eip55Address
-			c.EVM[0].Chain.Workflow.FromAddress = &keyV2.EIP55Address
-		}
-
 		c.Feature.FeedsManager = ptr(false)
+
+		if setupCfg != nil {
+			setupCfg(c)
+		}
 	})
 
 	n, err := ethBlockchain.NonceAt(ctx, ethBlockchain.transactionOpts.From, nil)

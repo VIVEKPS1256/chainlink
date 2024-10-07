@@ -324,7 +324,7 @@ type ethBlockchain struct {
 	wg     sync.WaitGroup
 }
 
-func setupBlockchain(t *testing.T, initialEth int, blockTimeProcessingTime time.Duration) *ethBlockchain {
+func NewEthBlockchain(t *testing.T, initialEth int, blockTimeProcessingTime time.Duration) *ethBlockchain {
 	transactOpts := testutils.MustNewSimTransactor(t) // config contract deployer and owner
 	genesisData := core.GenesisAlloc{transactOpts.From: {Balance: assets.Ether(initialEth).ToInt()}}
 	backend := cltest.NewSimulatedBackend(t, genesisData, uint32(ethconfig.Defaults.Miner.GasCeil))
