@@ -98,9 +98,8 @@ func peerToNode(nopID uint32, p peer) (kcr.CapabilitiesRegistryNodeParams, error
 }
 
 func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workflowDon DonInfo, triggerDon DonInfo,
-	targetDon DonInfo,
-	transactOpts *bind.TransactOpts, backend *ethBackend) common.Address {
-	addr, _, reg, err := kcr.DeployCapabilitiesRegistry(transactOpts, backend)
+	targetDon DonInfo, backend *ethBlockchain) common.Address {
+	addr, _, reg, err := kcr.DeployCapabilitiesRegistry(backend.transactionOpts, backend)
 	require.NoError(t, err)
 
 	backend.Commit()
@@ -132,7 +131,7 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 	ocrid, err := reg.GetHashedCapabilityId(&bind.CallOpts{}, ocr.LabelledName, ocr.Version)
 	require.NoError(t, err)
 
-	_, err = reg.AddCapabilities(transactOpts, []kcr.CapabilitiesRegistryCapability{
+	_, err = reg.AddCapabilities(backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
 		streamsTrigger,
 		writeChain,
 		ocr,
@@ -140,9 +139,9 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 	require.NoError(t, err)
 	backend.Commit()
 
-	_, err = reg.AddNodeOperators(transactOpts, []kcr.CapabilitiesRegistryNodeOperator{
+	_, err = reg.AddNodeOperators(backend.transactionOpts, []kcr.CapabilitiesRegistryNodeOperator{
 		{
-			Admin: transactOpts.From,
+			Admin: backend.transactionOpts.From,
 			Name:  "TEST_NODE_OPERATOR",
 		},
 	})
@@ -188,7 +187,7 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 		nodes = append(nodes, n)
 	}
 
-	_, err = reg.AddNodes(transactOpts, nodes)
+	_, err = reg.AddNodes(backend.transactionOpts, nodes)
 	require.NoError(t, err)
 
 	// workflow DON
@@ -206,7 +205,7 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 		},
 	}
 
-	_, err = reg.AddDON(transactOpts, ps, cfgs, false, true, workflowDon.F)
+	_, err = reg.AddDON(backend.transactionOpts, ps, cfgs, false, true, workflowDon.F)
 	require.NoError(t, err)
 
 	// trigger DON
@@ -233,7 +232,7 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 		},
 	}
 
-	_, err = reg.AddDON(transactOpts, ps, cfgs, true, false, triggerDon.F)
+	_, err = reg.AddDON(backend.transactionOpts, ps, cfgs, true, false, triggerDon.F)
 	require.NoError(t, err)
 
 	// target DON
@@ -263,7 +262,7 @@ func setupCapabilitiesRegistryContract(ctx context.Context, t *testing.T, workfl
 		},
 	}
 
-	_, err = reg.AddDON(transactOpts, ps, cfgs, true, false, targetDon.F)
+	_, err = reg.AddDON(backend.transactionOpts, ps, cfgs, true, false, targetDon.F)
 	require.NoError(t, err)
 
 	backend.Commit()
@@ -278,8 +277,8 @@ func newCapabilityConfig() *pb.CapabilityConfig {
 }
 
 func setupForwarderContract(t *testing.T, workflowDon DonInfo,
-	transactOpts *bind.TransactOpts, backend *ethBackend) (common.Address, *forwarder.KeystoneForwarder) {
-	addr, _, fwd, err := forwarder.DeployKeystoneForwarder(transactOpts, backend)
+	backend *ethBlockchain) (common.Address, *forwarder.KeystoneForwarder) {
+	addr, _, fwd, err := forwarder.DeployKeystoneForwarder(backend.transactionOpts, backend)
 	require.NoError(t, err)
 	backend.Commit()
 
@@ -288,16 +287,16 @@ func setupForwarderContract(t *testing.T, workflowDon DonInfo,
 		signers = append(signers, common.HexToAddress(p.Signer))
 	}
 
-	_, err = fwd.SetConfig(transactOpts, workflowDon.ID, workflowDon.ConfigVersion, workflowDon.F, signers)
+	_, err = fwd.SetConfig(backend.transactionOpts, workflowDon.ID, workflowDon.ConfigVersion, workflowDon.F, signers)
 	require.NoError(t, err)
 	backend.Commit()
 
 	return addr, fwd
 }
 
-func setupConsumerContract(t *testing.T, transactOpts *bind.TransactOpts, backend *ethBackend,
+func setupConsumerContract(t *testing.T, backend *ethBlockchain,
 	forwarderAddress common.Address, workflowOwner string, workflowName string) (common.Address, *feeds_consumer.KeystoneFeedsConsumer) {
-	addr, _, consumer, err := feeds_consumer.DeployKeystoneFeedsConsumer(transactOpts, backend)
+	addr, _, consumer, err := feeds_consumer.DeployKeystoneFeedsConsumer(backend.transactionOpts, backend)
 	require.NoError(t, err)
 	backend.Commit()
 
@@ -306,7 +305,7 @@ func setupConsumerContract(t *testing.T, transactOpts *bind.TransactOpts, backen
 
 	ownerAddr := common.HexToAddress(workflowOwner)
 
-	_, err = consumer.SetConfig(transactOpts, []common.Address{forwarderAddress}, []common.Address{ownerAddr}, [][10]byte{nameBytes})
+	_, err = consumer.SetConfig(backend.transactionOpts, []common.Address{forwarderAddress}, []common.Address{ownerAddr}, [][10]byte{nameBytes})
 	require.NoError(t, err)
 
 	backend.Commit()
@@ -314,9 +313,10 @@ func setupConsumerContract(t *testing.T, transactOpts *bind.TransactOpts, backen
 	return addr, consumer
 }
 
-type ethBackend struct {
+type ethBlockchain struct {
 	services.StateMachine
 	*backends.SimulatedBackend
+	transactionOpts *bind.TransactOpts
 
 	blockTimeProcessingTime time.Duration
 
@@ -324,19 +324,19 @@ type ethBackend struct {
 	wg     sync.WaitGroup
 }
 
-func setupBlockchain(t *testing.T, initialEth int, blockTimeProcessingTime time.Duration) (*ethBackend, *bind.TransactOpts) {
+func setupBlockchain(t *testing.T, initialEth int, blockTimeProcessingTime time.Duration) *ethBlockchain {
 	transactOpts := testutils.MustNewSimTransactor(t) // config contract deployer and owner
 	genesisData := core.GenesisAlloc{transactOpts.From: {Balance: assets.Ether(initialEth).ToInt()}}
 	backend := cltest.NewSimulatedBackend(t, genesisData, uint32(ethconfig.Defaults.Miner.GasCeil))
 	gethlog.SetDefault(gethlog.NewLogger(gethlog.NewTerminalHandlerWithLevel(os.Stderr, gethlog.LevelWarn, true)))
 	backend.Commit()
 
-	return &ethBackend{SimulatedBackend: backend, stopCh: make(services.StopChan),
-		blockTimeProcessingTime: blockTimeProcessingTime}, transactOpts
+	return &ethBlockchain{SimulatedBackend: backend, stopCh: make(services.StopChan),
+		blockTimeProcessingTime: blockTimeProcessingTime, transactionOpts: transactOpts}
 }
 
-func (b *ethBackend) Start(ctx context.Context) error {
-	return b.StartOnce("ethBackend", func() error {
+func (b *ethBlockchain) Start(ctx context.Context) error {
+	return b.StartOnce("ethBlockchain", func() error {
 		b.wg.Add(1)
 		go func() {
 			defer b.wg.Done()
@@ -359,8 +359,8 @@ func (b *ethBackend) Start(ctx context.Context) error {
 	})
 }
 
-func (b *ethBackend) Close() error {
-	return b.StopOnce("ethBackend", func() error {
+func (b *ethBlockchain) Close() error {
+	return b.StopOnce("ethBlockchain", func() error {
 		close(b.stopCh)
 		b.wg.Wait()
 		return nil

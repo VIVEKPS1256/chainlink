@@ -47,7 +47,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := framework.SetupStreamDonsWithTransmissionSchedule(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
+	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),
@@ -86,7 +86,7 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := framework.SetupStreamDonsWithTransmissionSchedule(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
+	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),

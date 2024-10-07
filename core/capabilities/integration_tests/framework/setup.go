@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ type DonInfo struct {
 	peerIDs    []peer
 }
 
-func SetupStreamDonsWithTransmissionSchedule(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, triggerDonInfo DonInfo, targetDonInfo DonInfo,
+func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, triggerDonInfo DonInfo, targetDonInfo DonInfo,
 	addWorkFlowJob func(t *testing.T, nodes []*cltest.TestApplication,
 		workflowName string,
 		workflowOwner string,
@@ -61,77 +60,35 @@ func SetupStreamDonsWithTransmissionSchedule(ctx context.Context, t *testing.T, 
 	lggr := logger.TestLogger(t)
 	lggr.SetLogLevel(TestLogLevel)
 
-	ethBlockchain, transactor := setupBlockchain(t, 1000, 1*time.Second)
-	capabilitiesRegistryAddr := setupCapabilitiesRegistryContract(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, transactor, ethBlockchain)
-	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, transactor, ethBlockchain)
-	consumerAddr, consumer := setupConsumerContract(t, transactor, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
+	ethBlockchain := setupBlockchain(t, 1000, 1*time.Second)
+	capabilitiesRegistryAddr := setupCapabilitiesRegistryContract(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, ethBlockchain)
+	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
+	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
+	libocr := NewMockLibOCR(t, workflowDonInfo.F, 1*time.Second)
+	msgBroker := NewTestAsyncMessageBroker(t, 1000)
+
+	servicetest.Run(t, msgBroker)
+	servicetest.Run(t, ethBlockchain)
+	servicetest.Run(t, libocr)
 
 	sink := NewReportsSink()
 
-	libocr := NewMockLibOCR(t, workflowDonInfo.F, 1*time.Second)
-	workflowDonNodes, _, _ := createDons(ctx, t, lggr, sink,
-		workflowDonInfo, triggerDonInfo, targetDonInfo,
-		ethBlockchain, capabilitiesRegistryAddr, forwarderAddr,
-		workflowDonInfo.KeyBundles, transactor, libocr)
+	createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
+
+	createTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
+
+	workflowDonNodes := createWorkflowDON(ctx, t, lggr, workflowDonInfo, msgBroker, libocr,
+		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
+		ethBlockchain, capabilitiesRegistryAddr)
 
 	addWorkFlowJob(t, workflowDonNodes, workflowName, workflowOwnerID, consumerAddr)
 
-	servicetest.Run(t, ethBlockchain)
-	servicetest.Run(t, libocr)
 	servicetest.Run(t, sink)
 	return consumer, sink
 }
 
-func createDons(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink *ReportsSink,
-	workflowDon DonInfo,
-	triggerDon DonInfo,
-	targetDon DonInfo,
-	simulatedEthBlockchain *ethBackend,
-	capRegistryAddr common.Address,
-	forwarderAddr common.Address,
-	workflowNodeKeyBundles []ocr2key.KeyBundle,
-	transactor *bind.TransactOpts,
-	libocr *MockLibOCR,
-) ([]*cltest.TestApplication, []*cltest.TestApplication, []*cltest.TestApplication) {
-	broker := NewTestAsyncMessageBroker(t, 1000)
-
-	var triggerNodes []*cltest.TestApplication
-	for i, triggerPeer := range triggerDon.Members {
-		triggerPeerDispatcher := broker.NewDispatcherForNode(triggerPeer)
-		nodeInfo := commoncap.Node{
-			PeerID: &triggerPeer,
-		}
-
-		capabilityRegistry := capabilities.NewRegistry(lggr)
-		trigger := reportsSink.GetNewTrigger(t)
-		err := capabilityRegistry.Add(ctx, trigger)
-		require.NoError(t, err)
-
-		triggerNode := startNewNode(ctx, t, lggr.Named("Trigger-"+strconv.Itoa(i)), nodeInfo, simulatedEthBlockchain, capRegistryAddr, triggerPeerDispatcher,
-			testPeerWrapper{peer: testPeer{triggerPeer}}, capabilityRegistry, nil, transactor,
-			triggerDon.keys[i])
-
-		require.NoError(t, triggerNode.Start(testutils.Context(t)))
-		triggerNodes = append(triggerNodes, triggerNode)
-	}
-
-	var targetNodes []*cltest.TestApplication
-	for i, targetPeer := range targetDon.Members {
-		targetPeerDispatcher := broker.NewDispatcherForNode(targetPeer)
-		nodeInfo := commoncap.Node{
-			PeerID: &targetPeer,
-		}
-
-		capabilityRegistry := capabilities.NewRegistry(lggr)
-
-		targetNode := startNewNode(ctx, t, lggr.Named("Target-"+strconv.Itoa(i)), nodeInfo, simulatedEthBlockchain, capRegistryAddr, targetPeerDispatcher,
-			testPeerWrapper{peer: testPeer{targetPeer}}, capabilityRegistry, &forwarderAddr, transactor,
-			targetDon.keys[i])
-
-		require.NoError(t, targetNode.Start(testutils.Context(t)))
-		targetNodes = append(triggerNodes, targetNode)
-	}
-
+func createWorkflowDON(ctx context.Context, t *testing.T, lggr logger.Logger, workflowDon DonInfo, broker *testAsyncMessageBroker, libocr *MockLibOCR,
+	capabilityDONs []commoncap.DON, simulatedEthBlockchain *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
 	var workflowNodes []*cltest.TestApplication
 	for i, workflowPeer := range workflowDon.Members {
 		workflowPeerDispatcher := broker.NewDispatcherForNode(workflowPeer)
@@ -161,35 +118,76 @@ func createDons(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSi
 
 		transmitter := ocr3.NewContractTransmitter(lggr, capabilityRegistry, "")
 
-		libocr.AddNode(plugin, transmitter, workflowNodeKeyBundles[i])
+		libocr.AddNode(plugin, transmitter, workflowDon.KeyBundles[i])
 
 		nodeInfo := commoncap.Node{
 			PeerID:         &workflowPeer,
 			WorkflowDON:    workflowDon.DON,
-			CapabilityDONs: []commoncap.DON{triggerDon.DON, targetDon.DON},
+			CapabilityDONs: capabilityDONs,
 		}
 
 		workflowNode := startNewNode(ctx, t, lggr.Named("Workflow-"+strconv.Itoa(i)), nodeInfo, simulatedEthBlockchain, capRegistryAddr, workflowPeerDispatcher,
-			testPeerWrapper{peer: testPeer{workflowPeer}}, capabilityRegistry, nil, transactor,
+			testPeerWrapper{peer: testPeer{workflowPeer}}, capabilityRegistry, nil,
 			workflowDon.keys[i])
 
 		require.NoError(t, workflowNode.Start(testutils.Context(t)))
 		workflowNodes = append(workflowNodes, workflowNode)
 	}
+	return workflowNodes
+}
 
-	servicetest.Run(t, broker)
+func createTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger, targetDon DonInfo, broker *testAsyncMessageBroker,
+	ethBlockchain *ethBlockchain, capRegistryAddr common.Address, forwarderAddr common.Address) []*cltest.TestApplication {
+	var targetNodes []*cltest.TestApplication
+	for i, targetPeer := range targetDon.Members {
+		targetPeerDispatcher := broker.NewDispatcherForNode(targetPeer)
+		nodeInfo := commoncap.Node{
+			PeerID: &targetPeer,
+		}
 
-	return workflowNodes, triggerNodes, targetNodes
+		capabilityRegistry := capabilities.NewRegistry(lggr)
+
+		targetNode := startNewNode(ctx, t, lggr.Named("Target-"+strconv.Itoa(i)), nodeInfo, ethBlockchain, capRegistryAddr, targetPeerDispatcher,
+			testPeerWrapper{peer: testPeer{targetPeer}}, capabilityRegistry, &forwarderAddr,
+			targetDon.keys[i])
+
+		require.NoError(t, targetNode.Start(testutils.Context(t)))
+		targetNodes = append(targetNodes, targetNode)
+	}
+	return targetNodes
+}
+
+func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink *ReportsSink, triggerDon DonInfo,
+	broker *testAsyncMessageBroker, ethBackend *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
+	var triggerNodes []*cltest.TestApplication
+	for i, triggerPeer := range triggerDon.Members {
+		triggerPeerDispatcher := broker.NewDispatcherForNode(triggerPeer)
+		nodeInfo := commoncap.Node{
+			PeerID: &triggerPeer,
+		}
+
+		capabilityRegistry := capabilities.NewRegistry(lggr)
+		trigger := reportsSink.GetNewTrigger(t)
+		err := capabilityRegistry.Add(ctx, trigger)
+		require.NoError(t, err)
+
+		triggerNode := startNewNode(ctx, t, lggr.Named("Trigger-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, triggerPeerDispatcher,
+			testPeerWrapper{peer: testPeer{triggerPeer}}, capabilityRegistry, nil,
+			triggerDon.keys[i])
+
+		require.NoError(t, triggerNode.Start(testutils.Context(t)))
+		triggerNodes = append(triggerNodes, triggerNode)
+	}
+	return triggerNodes
 }
 
 func startNewNode(ctx context.Context,
 	t *testing.T, lggr logger.Logger, nodeInfo commoncap.Node,
-	backend *ethBackend, capRegistryAddr common.Address,
+	ethBlockchain *ethBlockchain, capRegistryAddr common.Address,
 	dispatcher remotetypes.Dispatcher,
 	peerWrapper p2ptypes.PeerWrapper,
 	localCapabilities *capabilities.Registry,
 	forwarderAddress *common.Address,
-	transactor *bind.TransactOpts,
 	keyV2 ethkey.KeyV2,
 ) *cltest.TestApplication {
 	config, _ := heavyweight.FullTestDBV2(t, func(c *chainlink.Config, s *chainlink.Secrets) {
@@ -206,7 +204,7 @@ func startNewNode(ctx context.Context,
 		c.Feature.FeedsManager = ptr(false)
 	})
 
-	n, err := backend.NonceAt(ctx, transactor.From, nil)
+	n, err := ethBlockchain.NonceAt(ctx, ethBlockchain.transactionOpts.From, nil)
 	require.NoError(t, err)
 
 	tx := cltest.NewLegacyTransaction(
@@ -215,13 +213,13 @@ func startNewNode(ctx context.Context,
 		21000,
 		assets.GWei(1).ToInt(),
 		nil)
-	signedTx, err := transactor.Signer(transactor.From, tx)
+	signedTx, err := ethBlockchain.transactionOpts.Signer(ethBlockchain.transactionOpts.From, tx)
 	require.NoError(t, err)
-	err = backend.SendTransaction(ctx, signedTx)
+	err = ethBlockchain.SendTransaction(ctx, signedTx)
 	require.NoError(t, err)
-	backend.Commit()
+	ethBlockchain.Commit()
 
-	return cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, backend.SimulatedBackend, nodeInfo,
+	return cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, ethBlockchain.SimulatedBackend, nodeInfo,
 		dispatcher, peerWrapper, localCapabilities, keyV2, lggr)
 }
 
