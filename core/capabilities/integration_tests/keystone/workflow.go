@@ -7,7 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 
-	"github.com/smartcontractkit/chainlink/v2/core/internal/cltest"
+	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
 	"github.com/smartcontractkit/chainlink/v2/core/testdata/testspecs"
 )
@@ -49,7 +49,7 @@ targets:
       schedule: %s
 `
 
-func addWorkflowJob(t *testing.T, app *cltest.TestApplication,
+func addWorkflowJob(t *testing.T, app *framework.CapabilityNode,
 	workflowName string,
 	workflowOwner string,
 	feedIDs []string,

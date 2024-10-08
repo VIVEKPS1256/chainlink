@@ -16,7 +16,6 @@ import (
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/datastreams"
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
 	"github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/feeds_consumer"
-	"github.com/smartcontractkit/chainlink/v2/core/internal/cltest"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
 	reporttypes "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/mercury/v3/types"
 )
@@ -26,9 +25,9 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 1, NumNodes: 7, F: 2})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 2, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 3, NumNodes: 4, F: 1})
+	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
+	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
+	targetDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Target", ID: 3, NumNodes: 4, F: 1})
 
 	feedCount := 3
 	var feedIDs []string
@@ -36,15 +35,14 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 		feedIDs = append(feedIDs, newFeedID(t))
 	}
 
-	addWorkflowJob := func(t *testing.T, workflowNodes []*cltest.TestApplication,
+	addWorkflowJob := func(t *testing.T, don *framework.DON,
 		workflowName string,
 		workflowOwner string,
 		consumerContractAddr common.Address) {
 
-		for _, node := range workflowNodes {
+		for _, node := range don.Nodes {
 			addWorkflowJob(t, node, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "allAtOnce")
 		}
-
 	}
 
 	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
@@ -65,9 +63,9 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 1, NumNodes: 7, F: 2})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 2, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.Don{ID: 3, NumNodes: 4, F: 1})
+	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
+	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
+	targetDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Target", ID: 3, NumNodes: 4, F: 1})
 
 	feedCount := 3
 	var feedIDs []string
@@ -75,12 +73,12 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 		feedIDs = append(feedIDs, newFeedID(t))
 	}
 
-	addWorkflowJob := func(t *testing.T, workflowNodes []*cltest.TestApplication,
+	addWorkflowJob := func(t *testing.T, don *framework.DON,
 		workflowName string,
 		workflowOwner string,
 		consumerContractAddr common.Address) {
 
-		for _, node := range workflowNodes {
+		for _, node := range don.Nodes {
 			addWorkflowJob(t, node, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "oneAtATime")
 		}
 

@@ -97,6 +97,11 @@ func (m *MockLibOCR) AddNode(plugin ocr3types.ReportingPlugin[[]byte], transmitt
 }
 
 func (m *MockLibOCR) simulateProtocolRound(ctx context.Context) error {
+
+	if len(m.nodes) == 0 {
+		return nil
+	}
+
 	// randomly select a leader
 	leader := m.nodes[rand.Intn(len(m.nodes))]
 

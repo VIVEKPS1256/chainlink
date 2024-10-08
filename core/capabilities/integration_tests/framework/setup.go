@@ -47,13 +47,14 @@ var (
 
 type DonInfo struct {
 	commoncap.DON
+	name       string
 	keys       []ethkey.KeyV2
 	KeyBundles []ocr2key.KeyBundle
 	peerIDs    []peer
 }
 
 func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, triggerDonInfo DonInfo, targetDonInfo DonInfo,
-	addWorkFlowJob func(t *testing.T, nodes []*cltest.TestApplication,
+	addWorkFlowJob func(t *testing.T, don *DON,
 		workflowName string,
 		workflowOwner string,
 		consumerAddr common.Address)) (*feeds_consumer.KeystoneFeedsConsumer, *ReportsSink) {
@@ -77,44 +78,64 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	createWriteTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
 
-	workflowDonNodes := createWorkflowDON(ctx, t, lggr, workflowDonInfo, msgBroker,
+	workflowDon := createDON(ctx, t, lggr, workflowDonInfo, msgBroker,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
 		ethBlockchain, capabilitiesRegistryAddr)
 
-	addWorkFlowJob(t, workflowDonNodes, workflowName, workflowOwnerID, consumerAddr)
+	workflowDon.AddOCR3NonStandardCapability(ctx, t)
+
+	workflowDon.Start(t)
+
+	addWorkFlowJob(t, workflowDon, workflowName, workflowOwnerID, consumerAddr)
 
 	servicetest.Run(t, sink)
 	return consumer, sink
 }
 
-func createWorkflowDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
-	capabilityDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
+type DON struct {
+	lggr  logger.Logger
+	Info  DonInfo
+	Nodes []*CapabilityNode
+}
 
-	libocr := NewMockLibOCR(t, donInfo.F, 1*time.Second)
+func (d *DON) Start(t *testing.T) {
+	for _, node := range d.Nodes {
+		require.NoError(t, node.Start(testutils.Context(t)))
+	}
+}
+
+// Functions for adding non-standard capabilities to a DON
+func (d *DON) AddOCR3NonStandardCapability(ctx context.Context, t *testing.T) {
+	libocr := NewMockLibOCR(t, d.Info.F, 1*time.Second)
 	servicetest.Run(t, libocr)
 
-	var nodes []*cltest.TestApplication
+	for i, node := range d.Nodes {
+		addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.Info.F, d.Info.KeyBundles[i])
+	}
+}
+
+func createDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
+	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) *DON {
+
+	var nodes []*CapabilityNode
 	for i, member := range donInfo.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
 		capabilityRegistry := capabilities.NewRegistry(lggr)
 
-		addOCR3Capability(ctx, t, lggr, capabilityRegistry, libocr, donInfo.F, donInfo.KeyBundles[i])
-
 		nodeInfo := commoncap.Node{
 			PeerID:         &member,
 			WorkflowDON:    donInfo.DON,
-			CapabilityDONs: capabilityDONs,
+			CapabilityDONs: dependentDONs,
 		}
 
-		node := startNewNode(ctx, t, lggr.Named("Workflow-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
+		node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
 			testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
 			donInfo.keys[i], nil)
 
-		require.NoError(t, node.Start(testutils.Context(t)))
 		nodes = append(nodes, node)
 	}
 
-	return nodes
+	return &DON{lggr: lggr.Named(donInfo.name), Nodes: nodes, Info: donInfo}
 }
 
 func addOCR3Capability(ctx context.Context, t *testing.T, lggr logger.Logger, capabilityRegistry *capabilities.Registry,
@@ -166,7 +187,7 @@ func createWriteTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger,
 			})
 
 		require.NoError(t, targetNode.Start(testutils.Context(t)))
-		targetNodes = append(targetNodes, targetNode)
+		targetNodes = append(targetNodes, targetNode.TestApplication)
 	}
 	return targetNodes
 }
@@ -190,9 +211,15 @@ func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, rep
 			triggerDon.keys[i], nil)
 
 		require.NoError(t, triggerNode.Start(testutils.Context(t)))
-		triggerNodes = append(triggerNodes, triggerNode)
+		triggerNodes = append(triggerNodes, triggerNode.TestApplication)
 	}
 	return triggerNodes
+}
+
+// BetterName?
+type CapabilityNode struct {
+	*cltest.TestApplication
+	registry *capabilities.Registry
 }
 
 func startNewNode(ctx context.Context,
@@ -203,8 +230,7 @@ func startNewNode(ctx context.Context,
 	localCapabilities *capabilities.Registry,
 	keyV2 ethkey.KeyV2,
 	setupCfg func(c *chainlink.Config),
-
-) *cltest.TestApplication {
+) *CapabilityNode {
 	config, _ := heavyweight.FullTestDBV2(t, func(c *chainlink.Config, s *chainlink.Secrets) {
 		c.Capabilities.ExternalRegistry.ChainID = ptr(fmt.Sprintf("%d", testutils.SimulatedChainID))
 		c.Capabilities.ExternalRegistry.Address = ptr(capRegistryAddr.String())
@@ -231,11 +257,14 @@ func startNewNode(ctx context.Context,
 	require.NoError(t, err)
 	ethBlockchain.Commit()
 
-	return cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, ethBlockchain.SimulatedBackend, nodeInfo,
+	node := cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, ethBlockchain.SimulatedBackend, nodeInfo,
 		dispatcher, peerWrapper, localCapabilities, keyV2, lggr)
+
+	return &CapabilityNode{node, localCapabilities}
 }
 
 type Don struct {
+	Name     string
 	ID       uint32
 	NumNodes int
 	F        uint8
@@ -255,18 +284,19 @@ func CreateDonInfo(t *testing.T, don Don) DonInfo {
 		donKeys = append(donKeys, newKey)
 	}
 
-	triggerDonInfo := DonInfo{
+	donInfo := DonInfo{
 		DON: commoncap.DON{
 			ID:            don.ID,
 			Members:       donPeers,
 			F:             don.F,
 			ConfigVersion: 1,
 		},
+		name:       don.Name,
 		peerIDs:    peerIDs,
 		keys:       donKeys,
 		KeyBundles: keyBundles,
 	}
-	return triggerDonInfo
+	return donInfo
 }
 
 func getKeyBundlesAndPeerIDs(t *testing.T, numNodes int) ([]ocr2key.KeyBundle, []peer) {
