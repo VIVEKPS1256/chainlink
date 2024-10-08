@@ -34,8 +34,9 @@ type CapabilityNode struct {
 }
 
 type DON struct {
+	commoncap.DON
 	lggr  logger.Logger
-	Info  DonInfo
+	name  string
 	nodes []*CapabilityNode
 	jobs  []*job.Job
 
@@ -49,7 +50,7 @@ type DON struct {
 func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
 	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) *DON {
 
-	don := &DON{lggr: lggr.Named(donInfo.name), Info: donInfo}
+	don := &DON{lggr: lggr.Named(donInfo.name), name: donInfo.name, DON: donInfo.DON}
 
 	for i, member := range donInfo.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
@@ -93,11 +94,11 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 	}
 
 	if d.addOCR3NonStandardCapability {
-		libocr := NewMockLibOCR(t, d.Info.F, 1*time.Second)
+		libocr := NewMockLibOCR(t, d.F, 1*time.Second)
 		servicetest.Run(t, libocr)
 
-		for i, node := range d.nodes {
-			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.Info.F, d.Info.KeyBundles[i])
+		for _, node := range d.nodes {
+			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.F, node.KeyBundle)
 		}
 	}
 
