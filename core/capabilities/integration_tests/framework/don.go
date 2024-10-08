@@ -26,11 +26,24 @@ type DON struct {
 	Info  DonInfo
 	nodes []*CapabilityNode
 	jobs  []*job.Job
+
+	addOCR3NonStandardCapability bool
+
+	startNodeFns []func() *CapabilityNode
 }
 
 func (d *DON) Start(ctx context.Context, t *testing.T) {
-	for _, node := range d.nodes {
-		require.NoError(t, node.Start(testutils.Context(t)))
+	for _, startFn := range d.startNodeFns {
+		d.nodes = append(d.nodes, startFn())
+	}
+
+	if d.addOCR3NonStandardCapability {
+		libocr := NewMockLibOCR(t, d.Info.F, 1*time.Second)
+		servicetest.Run(t, libocr)
+
+		for i, node := range d.nodes {
+			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.Info.F, d.Info.KeyBundles[i])
+		}
 	}
 
 	for _, node := range d.nodes {
@@ -43,7 +56,7 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
 	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) *DON {
 
-	var nodes []*CapabilityNode
+	var startNodeFns []func() *CapabilityNode
 	for i, member := range donInfo.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
 		capabilityRegistry := capabilities.NewRegistry(lggr)
@@ -54,14 +67,18 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 			CapabilityDONs: dependentDONs,
 		}
 
-		node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
-			testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
-			donInfo.keys[i], nil)
+		startNodeFns = append(startNodeFns, func() *CapabilityNode {
 
-		nodes = append(nodes, node)
+			node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
+				testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
+				donInfo.keys[i], nil)
+
+			require.NoError(t, node.Start(testutils.Context(t)))
+			return node
+		})
 	}
 
-	return &DON{lggr: lggr.Named(donInfo.name), nodes: nodes, Info: donInfo}
+	return &DON{lggr: lggr.Named(donInfo.name), startNodeFns: startNodeFns, Info: donInfo}
 }
 
 func (d *DON) AddJobV2(j *job.Job) {
@@ -71,12 +88,7 @@ func (d *DON) AddJobV2(j *job.Job) {
 
 // Functions for adding non-standard capabilities to a DON
 func (d *DON) AddOCR3NonStandardCapability(ctx context.Context, t *testing.T) {
-	libocr := NewMockLibOCR(t, d.Info.F, 1*time.Second)
-	servicetest.Run(t, libocr)
-
-	for i, node := range d.nodes {
-		addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.Info.F, d.Info.KeyBundles[i])
-	}
+	d.addOCR3NonStandardCapability = true
 }
 
 func addOCR3Capability(ctx context.Context, t *testing.T, lggr logger.Logger, capabilityRegistry *capabilities.Registry,
