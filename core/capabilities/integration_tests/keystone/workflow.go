@@ -5,10 +5,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/require"
 
-	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
-	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
+	"github.com/smartcontractkit/chainlink/v2/core/services/job"
 	"github.com/smartcontractkit/chainlink/v2/core/testdata/testspecs"
 )
 
@@ -49,13 +47,13 @@ targets:
       schedule: %s
 `
 
-func addWorkflowJob(t *testing.T, app *framework.CapabilityNode,
+func createKeystoneWorkflowJob(t *testing.T,
 	workflowName string,
 	workflowOwner string,
 	feedIDs []string,
 	consumerAddr common.Address,
 	deltaStage string,
-	schedule string) {
+	schedule string) job.Job {
 	triggerFeedIDs := ""
 	for _, feedID := range feedIDs {
 		triggerFeedIDs += fmt.Sprintf("        - \"%s\"\n", feedID)
@@ -68,8 +66,5 @@ func addWorkflowJob(t *testing.T, app *framework.CapabilityNode,
 
 	workflowJobSpec := testspecs.GenerateWorkflowJobSpec(t, fmt.Sprintf(hardcodedWorkflow, workflowName, workflowOwner, triggerFeedIDs, aggregationFeeds,
 		consumerAddr.String(), deltaStage, schedule))
-	job := workflowJobSpec.Job()
-
-	err := app.AddJobV2(testutils.Context(t), &job)
-	require.NoError(t, err)
+	return workflowJobSpec.Job()
 }

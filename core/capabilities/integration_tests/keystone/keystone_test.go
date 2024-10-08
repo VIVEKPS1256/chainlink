@@ -17,6 +17,7 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
 	"github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/feeds_consumer"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
+	"github.com/smartcontractkit/chainlink/v2/core/services/job"
 	reporttypes "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/mercury/v3/types"
 )
 
@@ -35,17 +36,16 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 		feedIDs = append(feedIDs, newFeedID(t))
 	}
 
-	addWorkflowJob := func(t *testing.T, don *framework.DON,
+	createKeystoneWorkflowJob := func(t *testing.T,
 		workflowName string,
 		workflowOwner string,
-		consumerContractAddr common.Address) {
+		consumerContractAddr common.Address) job.Job {
 
-		for _, node := range don.Nodes {
-			addWorkflowJob(t, node, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "allAtOnce")
-		}
+		return createKeystoneWorkflowJob(t, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "allAtOnce")
+
 	}
 
-	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
+	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),
@@ -73,18 +73,16 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 		feedIDs = append(feedIDs, newFeedID(t))
 	}
 
-	addWorkflowJob := func(t *testing.T, don *framework.DON,
+	createKeystoneWorkflowJob := func(t *testing.T,
 		workflowName string,
 		workflowOwner string,
-		consumerContractAddr common.Address) {
+		consumerContractAddr common.Address) job.Job {
 
-		for _, node := range don.Nodes {
-			addWorkflowJob(t, node, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "oneAtATime")
-		}
+		return createKeystoneWorkflowJob(t, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "oneAtATime")
 
 	}
 
-	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, addWorkflowJob)
+	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),
