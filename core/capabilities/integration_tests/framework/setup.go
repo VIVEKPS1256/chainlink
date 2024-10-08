@@ -73,7 +73,13 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
 
-	createWriteTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
+	//createWriteTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
+
+	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
+		[]commoncap.DON{},
+		ethBlockchain, capabilitiesRegistryAddr)
+
+	writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
 
 	workflowDon := NewDON(ctx, t, lggr, workflowDonInfo, msgBroker,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
@@ -84,6 +90,8 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
 	workflowDon.AddJobV2(&job)
 
+	// TODO might have starrup depenccy order issue here?
+	writeTargetDon.Start(ctx, t)
 	workflowDon.Start(ctx, t)
 
 	servicetest.Run(t, sink)
@@ -110,7 +118,7 @@ func createWriteTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger,
 			})
 
 		require.NoError(t, targetNode.Start(testutils.Context(t)))
-		targetNodes = append(targetNodes, targetNode.TestApplication)
+		targetNodes = append(targetNodes, targetNode)
 	}
 	return targetNodes
 }
@@ -134,15 +142,9 @@ func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, rep
 			triggerDon.keys[i], nil)
 
 		require.NoError(t, triggerNode.Start(testutils.Context(t)))
-		triggerNodes = append(triggerNodes, triggerNode.TestApplication)
+		triggerNodes = append(triggerNodes, triggerNode)
 	}
 	return triggerNodes
-}
-
-// TODO  BetterName?
-type CapabilityNode struct {
-	*cltest.TestApplication
-	registry *capabilities.Registry
 }
 
 func startNewNode(ctx context.Context,
@@ -153,7 +155,7 @@ func startNewNode(ctx context.Context,
 	localCapabilities *capabilities.Registry,
 	keyV2 ethkey.KeyV2,
 	setupCfg func(c *chainlink.Config),
-) *CapabilityNode {
+) *cltest.TestApplication {
 	config, _ := heavyweight.FullTestDBV2(t, func(c *chainlink.Config, s *chainlink.Secrets) {
 		c.Capabilities.ExternalRegistry.ChainID = ptr(fmt.Sprintf("%d", testutils.SimulatedChainID))
 		c.Capabilities.ExternalRegistry.Address = ptr(capRegistryAddr.String())
@@ -180,10 +182,8 @@ func startNewNode(ctx context.Context,
 	require.NoError(t, err)
 	ethBlockchain.Commit()
 
-	node := cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, ethBlockchain.SimulatedBackend, nodeInfo,
+	return cltest.NewApplicationWithConfigV2AndKeyOnSimulatedBlockchain(t, config, ethBlockchain.SimulatedBackend, nodeInfo,
 		dispatcher, peerWrapper, localCapabilities, keyV2, lggr)
-
-	return &CapabilityNode{node, localCapabilities}
 }
 
 type Don struct {

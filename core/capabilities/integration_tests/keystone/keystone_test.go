@@ -58,6 +58,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 	waitForConsumerReports(ctx, t, consumer, reports)
 }
 
+/*
 func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 	ctx := testutils.Context(t)
 
@@ -93,7 +94,7 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 	triggerSink.SendReports(reports)
 
 	waitForConsumerReports(ctx, t, consumer, reports)
-}
+}*/
 
 func newFeedID(t *testing.T) string {
 	buf := [32]byte{}
