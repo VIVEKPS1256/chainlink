@@ -51,7 +51,7 @@ func (r *ReportsSink) SendReports(reportList []*datastreams.FeedReport) {
 	}
 }
 
-func (r *ReportsSink) GetNewTrigger(t *testing.T) *streamsTrigger {
+func (r *ReportsSink) GetNewTrigger(t *testing.T) capabilities.TriggerCapability {
 	trigger := streamsTrigger{t: t, toSend: make(chan capabilities.TriggerResponse, 1000),
 		wg: &r.wg, stopCh: r.stopCh}
 	r.triggers = append(r.triggers, trigger)

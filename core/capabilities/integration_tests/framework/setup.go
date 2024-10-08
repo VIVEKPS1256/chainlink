@@ -95,7 +95,11 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	return consumer, sink
 }
 
-func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink *ReportsSink, triggerDon DonInfo,
+type triggerFactory interface {
+	GetNewTrigger(t *testing.T) commoncap.TriggerCapability
+}
+
+func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink triggerFactory, triggerDon DonInfo,
 	broker *testAsyncMessageBroker, ethBackend *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
 	var triggerNodes []*cltest.TestApplication
 	for i, triggerPeer := range triggerDon.Members {
