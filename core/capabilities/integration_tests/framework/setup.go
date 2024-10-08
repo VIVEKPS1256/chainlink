@@ -18,7 +18,6 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities"
 	remotetypes "github.com/smartcontractkit/chainlink/v2/core/capabilities/remote/types"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/assets"
-	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 	"github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/feeds_consumer"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/cltest"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
@@ -73,8 +72,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
 
-	//createWriteTargetDON(ctx, t, lggr, targetDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr, forwarderAddr)
-
 	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
 		[]commoncap.DON{},
 		ethBlockchain, capabilitiesRegistryAddr)
@@ -88,7 +85,7 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	workflowDon.AddOCR3NonStandardCapability(ctx, t)
 
 	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
-	workflowDon.AddJobV2(&job)
+	workflowDon.AddJob(&job)
 
 	// TODO might have starrup depenccy order issue here?
 	writeTargetDon.Start(ctx, t)
@@ -96,31 +93,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	servicetest.Run(t, sink)
 	return consumer, sink
-}
-
-func createWriteTargetDON(ctx context.Context, t *testing.T, lggr logger.Logger, targetDon DonInfo, broker *testAsyncMessageBroker,
-	ethBlockchain *ethBlockchain, capRegistryAddr common.Address, forwarderAddr common.Address) []*cltest.TestApplication {
-	var targetNodes []*cltest.TestApplication
-	for i, targetPeer := range targetDon.Members {
-		targetPeerDispatcher := broker.NewDispatcherForNode(targetPeer)
-		nodeInfo := commoncap.Node{
-			PeerID: &targetPeer,
-		}
-
-		capabilityRegistry := capabilities.NewRegistry(lggr)
-
-		targetNode := startNewNode(ctx, t, lggr.Named("Target-"+strconv.Itoa(i)), nodeInfo, ethBlockchain, capRegistryAddr, targetPeerDispatcher,
-			testPeerWrapper{peer: testPeer{targetPeer}}, capabilityRegistry,
-			targetDon.keys[i], func(c *chainlink.Config) {
-				eip55Address := types.EIP55AddressFromAddress(forwarderAddr)
-				c.EVM[0].Chain.Workflow.ForwarderAddress = &eip55Address
-				c.EVM[0].Chain.Workflow.FromAddress = &targetDon.keys[i].EIP55Address
-			})
-
-		require.NoError(t, targetNode.Start(testutils.Context(t)))
-		targetNodes = append(targetNodes, targetNode)
-	}
-	return targetNodes
 }
 
 func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink *ReportsSink, triggerDon DonInfo,

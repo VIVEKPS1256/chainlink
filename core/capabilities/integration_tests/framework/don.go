@@ -109,7 +109,7 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 	}
 }
 
-func (d *DON) AddJobV2(j *job.Job) {
+func (d *DON) AddJob(j *job.Job) {
 	d.jobs = append(d.jobs, j)
 }
 
