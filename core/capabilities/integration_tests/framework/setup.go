@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	// As a  default set the logging to info otherwise 10s/100s of MB of logs are created on each test run
+	// As a  default set the logging to info otherwise 10s to 100s of MB of logs are created on each test run
 	TestLogLevel = zapcore.InfoLevel
 )
 
@@ -63,7 +63,9 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	servicetest.Run(t, msgBroker)
 	servicetest.Run(t, ethBlockchain)
 
-	capabilitiesRegistryAddr := setupCapabilitiesRegistryContract(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, ethBlockchain)
+	capabilitiesRegistry := NewCapabilitiesRegistry(t, ethBlockchain)
+
+	capabilitiesRegistry.setupCapabilitiesRegistryContract(ctx, workflowDonInfo, triggerDonInfo, targetDonInfo)
 	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
 	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
 
@@ -71,19 +73,19 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	triggerDon := NewDON(ctx, t, lggr, triggerDonInfo, msgBroker,
 		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistryAddr)
+		ethBlockchain, capabilitiesRegistry.getAddress())
 
 	triggerDon.AddTriggerCapability(sink)
 
 	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
 		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistryAddr)
+		ethBlockchain, capabilitiesRegistry.getAddress())
 
 	writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
 
 	workflowDon := NewDON(ctx, t, lggr, workflowDonInfo, msgBroker,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
-		ethBlockchain, capabilitiesRegistryAddr)
+		ethBlockchain, capabilitiesRegistry.getAddress())
 
 	workflowDon.AddOCR3NonStandardCapability(ctx, t)
 
