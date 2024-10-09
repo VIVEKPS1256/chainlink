@@ -65,7 +65,8 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	capabilitiesRegistry := NewCapabilitiesRegistry(ctx, t, ethBlockchain)
 
-	capabilitiesRegistry.setupCapabilitiesRegistryContract(ctx, workflowDonInfo, triggerDonInfo, targetDonInfo)
+	capabilitiesRegistry.setupTriggerDON(triggerDonInfo)
+	capabilitiesRegistry.setupCapabilitiesRegistryContract(workflowDonInfo, triggerDonInfo, targetDonInfo)
 	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
 	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
 

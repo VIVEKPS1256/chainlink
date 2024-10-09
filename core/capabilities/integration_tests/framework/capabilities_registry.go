@@ -34,6 +34,8 @@ type capabilitiesRegistry struct {
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
+
+	sid [32]byte
 }
 
 func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
@@ -72,8 +74,7 @@ func (r *capabilitiesRegistry) getAddress() common.Address {
 	return r.addr
 }
 
-func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Context, workflowDon DonInfo, triggerDon DonInfo,
-	targetDon DonInfo) {
+func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 
 	streamsTrigger := kcr.CapabilitiesRegistryCapability{
 		LabelledName:   "streams-trigger",
@@ -82,6 +83,30 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 	}
 	sid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, streamsTrigger.LabelledName, streamsTrigger.Version)
 	require.NoError(r.t, err)
+
+	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
+		streamsTrigger,
+	})
+	require.NoError(r.t, err)
+	r.backend.Commit()
+	r.sid = sid
+
+	nodes := []kcr.CapabilitiesRegistryNodeParams{}
+	for _, triggerPeer := range triggerDon.peerIDs {
+		n, innerErr := peerToNode(r.nodeOperatorID, triggerPeer)
+		require.NoError(r.t, innerErr)
+
+		n.HashedCapabilityIds = [][32]byte{r.sid}
+		nodes = append(nodes, n)
+	}
+
+	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
+	require.NoError(r.t, err)
+	r.backend.Commit()
+}
+
+func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon DonInfo, triggerDon DonInfo,
+	targetDon DonInfo) {
 
 	writeChain := kcr.CapabilitiesRegistryCapability{
 		LabelledName: "write_geth-testnet",
@@ -103,7 +128,6 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 	require.NoError(r.t, err)
 
 	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-		streamsTrigger,
 		writeChain,
 		ocr,
 	})
@@ -116,14 +140,6 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 		require.NoError(r.t, innerErr)
 
 		n.HashedCapabilityIds = [][32]byte{ocrid}
-		nodes = append(nodes, n)
-	}
-
-	for _, triggerPeer := range triggerDon.peerIDs {
-		n, innerErr := peerToNode(r.nodeOperatorID, triggerPeer)
-		require.NoError(r.t, innerErr)
-
-		n.HashedCapabilityIds = [][32]byte{sid}
 		nodes = append(nodes, n)
 	}
 
@@ -175,7 +191,7 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 
 	cfgs = []kcr.CapabilitiesRegistryCapabilityConfiguration{
 		{
-			CapabilityId: sid,
+			CapabilityId: r.sid,
 			Config:       configb,
 		},
 	}
