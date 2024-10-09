@@ -63,7 +63,7 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	servicetest.Run(t, msgBroker)
 	servicetest.Run(t, ethBlockchain)
 
-	capabilitiesRegistry := NewCapabilitiesRegistry(t, ethBlockchain)
+	capabilitiesRegistry := NewCapabilitiesRegistry(ctx, t, ethBlockchain)
 
 	capabilitiesRegistry.setupCapabilitiesRegistryContract(ctx, workflowDonInfo, triggerDonInfo, targetDonInfo)
 	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)

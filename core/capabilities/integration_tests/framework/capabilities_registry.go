@@ -29,18 +29,43 @@ const (
 )
 
 type capabilitiesRegistry struct {
-	t        *testing.T
-	backend  *ethBlockchain
-	contract *kcr.CapabilitiesRegistry
-	addr     common.Address
+	t              *testing.T
+	backend        *ethBlockchain
+	contract       *kcr.CapabilitiesRegistry
+	addr           common.Address
+	nodeOperatorID uint32
 }
 
-func NewCapabilitiesRegistry(t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
+func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
 	addr, _, contract, err := kcr.DeployCapabilitiesRegistry(backend.transactionOpts, backend)
 	require.NoError(t, err)
 	backend.Commit()
 
-	return &capabilitiesRegistry{t: t, addr: addr, contract: contract, backend: backend}
+	_, err = contract.AddNodeOperators(backend.transactionOpts, []kcr.CapabilitiesRegistryNodeOperator{
+		{
+			Admin: backend.transactionOpts.From,
+			Name:  "TEST_NODE_OPERATOR",
+		},
+	})
+	require.NoError(t, err)
+	blockHash := backend.Commit()
+
+	logs, err := backend.FilterLogs(ctx, ethereum.FilterQuery{
+		BlockHash: &blockHash,
+		FromBlock: nil,
+		ToBlock:   nil,
+		Addresses: nil,
+		Topics:    nil,
+	})
+
+	require.NoError(t, err)
+
+	recLog, err := contract.ParseNodeOperatorAdded(logs[0])
+	require.NoError(t, err)
+
+	nopID := recLog.NodeOperatorId
+
+	return &capabilitiesRegistry{t: t, addr: addr, contract: contract, backend: backend, nodeOperatorID: nopID}
 }
 
 func (r *capabilitiesRegistry) getAddress() common.Address {
@@ -85,32 +110,9 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
-	_, err = r.contract.AddNodeOperators(r.backend.transactionOpts, []kcr.CapabilitiesRegistryNodeOperator{
-		{
-			Admin: r.backend.transactionOpts.From,
-			Name:  "TEST_NODE_OPERATOR",
-		},
-	})
-	require.NoError(r.t, err)
-	blockHash := r.backend.Commit()
-
-	logs, err := r.backend.FilterLogs(ctx, ethereum.FilterQuery{
-		BlockHash: &blockHash,
-		FromBlock: nil,
-		ToBlock:   nil,
-		Addresses: nil,
-		Topics:    nil,
-	})
-
-	require.NoError(r.t, err)
-
-	recLog, err := r.contract.ParseNodeOperatorAdded(logs[0])
-	require.NoError(r.t, err)
-
-	nopID := recLog.NodeOperatorId
 	nodes := []kcr.CapabilitiesRegistryNodeParams{}
 	for _, wfPeer := range workflowDon.peerIDs {
-		n, innerErr := peerToNode(nopID, wfPeer)
+		n, innerErr := peerToNode(r.nodeOperatorID, wfPeer)
 		require.NoError(r.t, innerErr)
 
 		n.HashedCapabilityIds = [][32]byte{ocrid}
@@ -118,7 +120,7 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 	}
 
 	for _, triggerPeer := range triggerDon.peerIDs {
-		n, innerErr := peerToNode(nopID, triggerPeer)
+		n, innerErr := peerToNode(r.nodeOperatorID, triggerPeer)
 		require.NoError(r.t, innerErr)
 
 		n.HashedCapabilityIds = [][32]byte{sid}
@@ -126,7 +128,7 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(ctx context.Con
 	}
 
 	for _, targetPeer := range targetDon.peerIDs {
-		n, innerErr := peerToNode(nopID, targetPeer)
+		n, innerErr := peerToNode(r.nodeOperatorID, targetPeer)
 		require.NoError(r.t, innerErr)
 
 		n.HashedCapabilityIds = [][32]byte{wid}
