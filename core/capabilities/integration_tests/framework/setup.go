@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -76,8 +75,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	triggerDon.AddTriggerCapability(sink)
 
-	//createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
-
 	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
 		[]commoncap.DON{},
 		ethBlockchain, capabilitiesRegistryAddr)
@@ -93,7 +90,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
 	workflowDon.AddJob(&job)
 
-	// TODO might have starrup depenccy order issue here?
 	triggerDon.Start(ctx, t)
 	writeTargetDon.Start(ctx, t)
 	workflowDon.Start(ctx, t)
@@ -104,30 +100,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 type triggerFactory interface {
 	GetNewTrigger(t *testing.T) commoncap.TriggerCapability
-}
-
-func createTriggerDON(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSink triggerFactory, triggerDon DonInfo,
-	broker *testAsyncMessageBroker, ethBackend *ethBlockchain, capRegistryAddr common.Address) []*cltest.TestApplication {
-	var triggerNodes []*cltest.TestApplication
-	for i, triggerPeer := range triggerDon.Members {
-		triggerPeerDispatcher := broker.NewDispatcherForNode(triggerPeer)
-		nodeInfo := commoncap.Node{
-			PeerID: &triggerPeer,
-		}
-
-		capabilityRegistry := capabilities.NewRegistry(lggr)
-		trigger := reportsSink.GetNewTrigger(t)
-		err := capabilityRegistry.Add(ctx, trigger)
-		require.NoError(t, err)
-
-		triggerNode := startNewNode(ctx, t, lggr.Named("Trigger-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, triggerPeerDispatcher,
-			testPeerWrapper{peer: testPeer{triggerPeer}}, capabilityRegistry,
-			triggerDon.keys[i], nil)
-
-		require.NoError(t, triggerNode.Start(testutils.Context(t)))
-		triggerNodes = append(triggerNodes, triggerNode)
-	}
-	return triggerNodes
 }
 
 func startNewNode(ctx context.Context,
