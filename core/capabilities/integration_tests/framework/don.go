@@ -31,6 +31,7 @@ type CapabilityNode struct {
 	key       ethkey.KeyV2
 	KeyBundle ocr2key.KeyBundle
 	peerID    peer
+	start     func()
 }
 
 type DON struct {
@@ -44,7 +45,7 @@ type DON struct {
 
 	addOCR3NonStandardCapability bool
 
-	startNodeFns []func() *CapabilityNode
+	triggerFactories []triggerFactory
 }
 
 func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
@@ -68,9 +69,9 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 			KeyBundle: donInfo.KeyBundles[i],
 			peerID:    donInfo.peerIDs[i],
 		}
+		don.nodes = append(don.nodes, cn)
 
-		don.startNodeFns = append(don.startNodeFns, func() *CapabilityNode {
-
+		cn.start = func() {
 			node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
 				testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
 				donInfo.keys[i], func(c *chainlink.Config) {
@@ -81,16 +82,23 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 
 			require.NoError(t, node.Start(testutils.Context(t)))
 			cn.TestApplication = node
-			return cn
-		})
+		}
 	}
 
 	return don
 }
 
 func (d *DON) Start(ctx context.Context, t *testing.T) {
-	for _, startFn := range d.startNodeFns {
-		d.nodes = append(d.nodes, startFn())
+	for _, triggerFactory := range d.triggerFactories {
+		for _, node := range d.nodes {
+			trigger := triggerFactory.GetNewTrigger(t)
+			err := node.registry.Add(ctx, trigger)
+			require.NoError(t, err)
+		}
+	}
+
+	for _, node := range d.nodes {
+		node.start()
 	}
 
 	if d.addOCR3NonStandardCapability {
@@ -107,6 +115,11 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 			require.NoError(t, node.AddJobV2(ctx, j))
 		}
 	}
+}
+
+// Is this streams specific, can it made capabilty type agnostic?
+func (d *DON) AddTriggerCapability(triggerFactory triggerFactory) {
+	d.triggerFactories = append(d.triggerFactories, triggerFactory)
 }
 
 func (d *DON) AddJob(j *job.Job) {

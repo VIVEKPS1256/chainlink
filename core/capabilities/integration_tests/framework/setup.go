@@ -70,7 +70,13 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	sink := NewReportsSink()
 
-	createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
+	triggerDon := NewDON(ctx, t, lggr, triggerDonInfo, msgBroker,
+		[]commoncap.DON{},
+		ethBlockchain, capabilitiesRegistryAddr)
+
+	triggerDon.AddTriggerCapability(sink)
+
+	//createTriggerDON(ctx, t, lggr, sink, triggerDonInfo, msgBroker, ethBlockchain, capabilitiesRegistryAddr)
 
 	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
 		[]commoncap.DON{},
@@ -88,6 +94,7 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	workflowDon.AddJob(&job)
 
 	// TODO might have starrup depenccy order issue here?
+	triggerDon.Start(ctx, t)
 	writeTargetDon.Start(ctx, t)
 	workflowDon.Start(ctx, t)
 
