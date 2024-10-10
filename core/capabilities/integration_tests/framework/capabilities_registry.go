@@ -27,17 +27,15 @@ const (
 	CapabilityTypeTarget    = 3
 )
 
-type capabilitiesRegistry struct {
+type CapabilitiesRegistry struct {
 	t              *testing.T
 	backend        *ethBlockchain
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
-
-	ocrid [32]byte
 }
 
-func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
+func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *CapabilitiesRegistry {
 	addr, _, contract, err := kcr.DeployCapabilitiesRegistry(backend.transactionOpts, backend)
 	require.NoError(t, err)
 	backend.Commit()
@@ -66,10 +64,10 @@ func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBloc
 
 	nopID := recLog.NodeOperatorId
 
-	return &capabilitiesRegistry{t: t, addr: addr, contract: contract, backend: backend, nodeOperatorID: nopID}
+	return &CapabilitiesRegistry{t: t, addr: addr, contract: contract, backend: backend, nodeOperatorID: nopID}
 }
 
-func (r *capabilitiesRegistry) getAddress() common.Address {
+func (r *CapabilitiesRegistry) getAddress() common.Address {
 	return r.addr
 }
 
@@ -78,7 +76,7 @@ type capability struct {
 	registryConfig      kcr.CapabilitiesRegistryCapability
 }
 
-func (r *capabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
+func (r *CapabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
 
 	writeChain := kcr.CapabilitiesRegistryCapability{
 		LabelledName:   "write_geth-testnet",
@@ -105,7 +103,7 @@ func (r *capabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
 	}})
 }
 
-func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
+func (r *CapabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 
 	triggerCapabilityConfig := newCapabilityConfig()
 	triggerCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTriggerConfig{
@@ -129,7 +127,7 @@ func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 	r.setupDON(triggerDon, []capability{streamsTriggerCapability})
 }
 
-func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
+func (r *CapabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 
 	ocr := kcr.CapabilitiesRegistryCapability{
 		LabelledName:   "offchain_reporting",
@@ -143,7 +141,7 @@ func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 	}})
 }
 
-func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capability) {
+func (r *CapabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capability) {
 
 	var hashedCapabilityIDs [][32]byte
 

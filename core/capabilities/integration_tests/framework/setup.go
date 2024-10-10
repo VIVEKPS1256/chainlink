@@ -65,10 +65,6 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 	servicetest.Run(t, ethBlockchain)
 
 	capabilitiesRegistry := NewCapabilitiesRegistry(ctx, t, ethBlockchain)
-
-	capabilitiesRegistry.setupTriggerDON(triggerDonInfo)
-	capabilitiesRegistry.setupWorkflowDon(workflowDonInfo)
-	capabilitiesRegistry.setupTargetDon(targetDonInfo)
 	forwarderAddr, _ := setupForwarderContract(t, workflowDonInfo, ethBlockchain)
 	consumerAddr, consumer := setupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
 
@@ -76,24 +72,29 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, trigg
 
 	triggerDon := NewDON(ctx, t, lggr, triggerDonInfo, msgBroker,
 		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistry.getAddress())
+		ethBlockchain, capabilitiesRegistry)
 
 	triggerDon.AddTriggerCapability(sink)
 
 	writeTargetDon := NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
 		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistry.getAddress())
+		ethBlockchain, capabilitiesRegistry)
 
-	writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
+	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
+	require.NoError(t, err)
 
 	workflowDon := NewDON(ctx, t, lggr, workflowDonInfo, msgBroker,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
-		ethBlockchain, capabilitiesRegistry.getAddress())
+		ethBlockchain, capabilitiesRegistry)
 
 	workflowDon.AddOCR3NonStandardCapability(ctx, t)
 
 	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
 	workflowDon.AddJob(&job)
+
+	triggerDon.Initialise()
+	workflowDon.Initialise()
+	writeTargetDon.Initialise()
 
 	triggerDon.Start(ctx, t)
 	writeTargetDon.Start(ctx, t)

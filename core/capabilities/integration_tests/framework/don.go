@@ -2,19 +2,24 @@ package framework
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	commoncap "github.com/smartcontractkit/chainlink-common/pkg/capabilities"
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/consensus/ocr3"
+	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/pb"
 	"github.com/smartcontractkit/chainlink-common/pkg/services/servicetest"
 	coretypes "github.com/smartcontractkit/chainlink-common/pkg/types/core"
+	"github.com/smartcontractkit/chainlink-common/pkg/values"
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
+	kcr "github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/capabilities_registry"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/cltest"
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
 	"github.com/smartcontractkit/chainlink/v2/core/logger"
@@ -35,11 +40,13 @@ type CapabilityNode struct {
 }
 
 type DON struct {
-	commoncap.DON
-	lggr  logger.Logger
-	name  string
-	nodes []*CapabilityNode
-	jobs  []*job.Job
+	info                 DonInfo
+	lggr                 logger.Logger
+	name                 string
+	nodes                []*CapabilityNode
+	jobs                 []*job.Job
+	capabilities         []capability
+	capabilitiesRegistry *CapabilitiesRegistry
 
 	nodeConfigModifier func(c *chainlink.Config, node *CapabilityNode)
 
@@ -49,9 +56,9 @@ type DON struct {
 }
 
 func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
-	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capRegistryAddr common.Address) *DON {
+	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capabilitiesRegistry *CapabilitiesRegistry) *DON {
 
-	don := &DON{lggr: lggr.Named(donInfo.name), name: donInfo.name, DON: donInfo.DON}
+	don := &DON{lggr: lggr.Named(donInfo.name), name: donInfo.name, info: donInfo, capabilitiesRegistry: capabilitiesRegistry}
 
 	for i, member := range donInfo.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
@@ -72,7 +79,7 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 		don.nodes = append(don.nodes, cn)
 
 		cn.start = func() {
-			node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capRegistryAddr, dispatcher,
+			node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capabilitiesRegistry.getAddress(), dispatcher,
 				testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
 				donInfo.keys[i], func(c *chainlink.Config) {
 					if don.nodeConfigModifier != nil {
@@ -86,6 +93,10 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 	}
 
 	return don
+}
+
+func (d *DON) Initialise() {
+	d.capabilitiesRegistry.setupDON(d.info, d.capabilities)
 }
 
 func (d *DON) Start(ctx context.Context, t *testing.T) {
@@ -102,11 +113,11 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 	}
 
 	if d.addOCR3NonStandardCapability {
-		libocr := NewMockLibOCR(t, d.F, 1*time.Second)
+		libocr := NewMockLibOCR(t, d.info.F, 1*time.Second)
 		servicetest.Run(t, libocr)
 
 		for _, node := range d.nodes {
-			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.F, node.KeyBundle)
+			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.info.F, node.KeyBundle)
 		}
 	}
 
@@ -120,6 +131,27 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 // Is this streams specific, can it made capabilty type agnostic?
 func (d *DON) AddTriggerCapability(triggerFactory triggerFactory) {
 	d.triggerFactories = append(d.triggerFactories, triggerFactory)
+
+	triggerCapabilityConfig := newCapabilityConfig()
+	triggerCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTriggerConfig{
+		RemoteTriggerConfig: &pb.RemoteTriggerConfig{
+			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
+			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
+			// F + 1
+			MinResponsesToAggregate: uint32(d.info.F) + 1,
+		},
+	}
+
+	streamsTriggerCapability := capability{
+		donCapabilityConfig: triggerCapabilityConfig,
+		registryConfig: kcr.CapabilitiesRegistryCapability{
+			LabelledName:   "streams-trigger",
+			Version:        "1.0.0",
+			CapabilityType: CapabilityTypeTrigger,
+		},
+	}
+
+	d.capabilities = append(d.capabilities, streamsTriggerCapability)
 }
 
 func (d *DON) AddJob(j *job.Job) {
@@ -129,15 +161,54 @@ func (d *DON) AddJob(j *job.Job) {
 // Functions for adding non-standard capabilities to a DON, deliberately verbose
 func (d *DON) AddOCR3NonStandardCapability(ctx context.Context, t *testing.T) {
 	d.addOCR3NonStandardCapability = true
+
+	ocr := kcr.CapabilitiesRegistryCapability{
+		LabelledName:   "offchain_reporting",
+		Version:        "1.0.0",
+		CapabilityType: CapabilityTypeConsensus,
+	}
+
+	d.capabilities = append(d.capabilities, capability{
+		donCapabilityConfig: newCapabilityConfig(),
+		registryConfig:      ocr,
+	})
 }
 
 // TODO support chaining these modifiers?
-func (d *DON) AddEthereumWriteTargetNonStandardCapability(forwarderAddr common.Address) {
+func (d *DON) AddEthereumWriteTargetNonStandardCapability(forwarderAddr common.Address) error {
 	d.nodeConfigModifier = func(c *chainlink.Config, node *CapabilityNode) {
 		eip55Address := types.EIP55AddressFromAddress(forwarderAddr)
 		c.EVM[0].Chain.Workflow.ForwarderAddress = &eip55Address
 		c.EVM[0].Chain.Workflow.FromAddress = &node.key.EIP55Address
 	}
+
+	writeChain := kcr.CapabilitiesRegistryCapability{
+		LabelledName:   "write_geth-testnet",
+		Version:        "1.0.0",
+		CapabilityType: CapabilityTypeTarget,
+	}
+
+	targetCapabilityConfig := newCapabilityConfig()
+
+	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
+	if err != nil {
+		return fmt.Errorf("failed to wrap map: %v", err)
+	}
+
+	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
+
+	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
+		RemoteTargetConfig: &pb.RemoteTargetConfig{
+			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
+		},
+	}
+
+	d.capabilities = append(d.capabilities, capability{
+		donCapabilityConfig: targetCapabilityConfig,
+		registryConfig:      writeChain,
+	})
+
+	return nil
 }
 
 func addOCR3Capability(ctx context.Context, t *testing.T, lggr logger.Logger, capabilityRegistry *capabilities.Registry,
