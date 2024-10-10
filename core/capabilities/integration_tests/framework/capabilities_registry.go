@@ -111,12 +111,16 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 		id, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.LabelledName, c.Version)
 		require.NoError(r.t, err)
 		hashedCapabilityIDs = append(hashedCapabilityIDs, id)
-
-		_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-			c.CapabilitiesRegistryCapability,
-		})
 		require.NoError(r.t, err)
 	}
+
+	var registryCapabilities []kcr.CapabilitiesRegistryCapability
+	for _, c := range capabilites {
+		registryCapabilities = append(registryCapabilities, c.CapabilitiesRegistryCapability)
+	}
+
+	_, err := r.contract.AddCapabilities(r.backend.transactionOpts, registryCapabilities)
+	require.NoError(r.t, err)
 
 	r.backend.Commit()
 
@@ -129,7 +133,7 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 		nodes = append(nodes, n)
 	}
 
-	_, err := r.contract.AddNodes(r.backend.transactionOpts, nodes)
+	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
@@ -162,15 +166,42 @@ func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 		CapabilityType: CapabilityTypeConsensus,
 	}
 
-	cc := newCapabilityConfig()
-
 	r.setupDON(workflowDon, []capability{{
-		CapabilityConfig:               cc,
+		CapabilityConfig:               newCapabilityConfig(),
 		CapabilitiesRegistryCapability: ocr,
 	}})
 }
 
+func (r *capabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
+
+	writeChain := kcr.CapabilitiesRegistryCapability{
+		LabelledName: "write_geth-testnet",
+		Version:      "1.0.0",
+
+		CapabilityType: CapabilityTypeTarget,
+	}
+
+	targetCapabilityConfig := newCapabilityConfig()
+
+	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
+	require.NoError(r.t, err)
+
+	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
+
+	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
+		RemoteTargetConfig: &pb.RemoteTargetConfig{
+			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
+		},
+	}
+
+	r.setupDON(targetDon, []capability{{
+		CapabilityConfig:               targetCapabilityConfig,
+		CapabilitiesRegistryCapability: writeChain,
+	}})
+}
+
 func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(
+
 	targetDon DonInfo) {
 
 	writeChain := kcr.CapabilitiesRegistryCapability{
