@@ -207,7 +207,7 @@ func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 	r.backend.Commit()
 }
 
-func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon DonInfo, triggerDon DonInfo,
+func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(
 	targetDon DonInfo) {
 
 	writeChain := kcr.CapabilitiesRegistryCapability{
