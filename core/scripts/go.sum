@@ -1416,6 +1416,7 @@ github.com/smartcontractkit/chainlink-ccip v0.0.0-20241009131440-a2f97042cc04 h1
 github.com/smartcontractkit/chainlink-ccip v0.0.0-20241009131440-a2f97042cc04/go.mod h1:GnHCwV1ApQaL06YNWFXy2nvN/tpcloqbAZOLZnWTx+I=
 github.com/smartcontractkit/chainlink-common v0.2.3-0.20241008175210-167715aa8613 h1:7fSu2ouxcOUrpuyMqia4tUA20LAuFU0IwVDGz+4aTnw=
 github.com/smartcontractkit/chainlink-common v0.2.3-0.20241008175210-167715aa8613/go.mod h1:+yz2So1Lp90C3ATfMmqMEJaIr3zfG8e4xHa/3u1kIDk=
+github.com/smartcontractkit/chainlink-common v0.3.1-0.20241010185730-51600193cc72/go.mod h1:tsGgeEJc5SUSlfVGSX0wR0EkRU3pM58D6SKF97V68ko=
 github.com/smartcontractkit/chainlink-cosmos v0.4.1-0.20240911175228-daf2600bb7b7 h1:lTGIOQYLk1Ufn++X/AvZnt6VOcuhste5yp+C157No/Q=
 github.com/smartcontractkit/chainlink-cosmos v0.4.1-0.20240911175228-daf2600bb7b7/go.mod h1:BMYE1vC/pGmdFSsOJdPrAA0/4gZ0Xo0SxTMdGspBtRo=
 github.com/smartcontractkit/chainlink-data-streams v0.0.0-20241008143351-06ab16d728d3 h1:st0MeTGOCVG0U+qpTFdmLVoIXICk/vb3P2xismSYpvk=
@@ -1430,6 +1431,7 @@ github.com/smartcontractkit/grpc-proxy v0.0.0-20240830132753-a7e17fec5ab7 h1:12i
 github.com/smartcontractkit/grpc-proxy v0.0.0-20240830132753-a7e17fec5ab7/go.mod h1:FX7/bVdoep147QQhsOPkYsPEXhGZjeYx6lBSaSXtZOA=
 github.com/smartcontractkit/libocr v0.0.0-20240717100443-f6226e09bee7 h1:e38V5FYE7DA1JfKXeD5Buo/7lczALuVXlJ8YNTAUxcw=
 github.com/smartcontractkit/libocr v0.0.0-20240717100443-f6226e09bee7/go.mod h1:fb1ZDVXACvu4frX3APHZaEBp0xi1DIm34DcA0CwTsZM=
+github.com/smartcontractkit/libocr v0.0.0-20241007185508-adbe57025f12/go.mod h1:fb1ZDVXACvu4frX3APHZaEBp0xi1DIm34DcA0CwTsZM=
 github.com/smartcontractkit/tdh2/go/ocr2/decryptionplugin v0.0.0-20230906073235-9e478e5e19f1 h1:yiKnypAqP8l0OX0P3klzZ7SCcBUxy5KqTAKZmQOvSQE=
 github.com/smartcontractkit/tdh2/go/ocr2/decryptionplugin v0.0.0-20230906073235-9e478e5e19f1/go.mod h1:q6f4fe39oZPdsh1i57WznEZgxd8siidMaSFq3wdPmVg=
 github.com/smartcontractkit/tdh2/go/tdh2 v0.0.0-20230906073235-9e478e5e19f1 h1:Dai1bn+Q5cpeGMQwRdjOdVjG8mmFFROVkSKuUgBErRQ=

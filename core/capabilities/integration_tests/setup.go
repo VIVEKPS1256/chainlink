@@ -168,7 +168,7 @@ func createDons(ctx context.Context, t *testing.T, lggr logger.Logger, reportsSi
 		repConfig := ocr3types.ReportingPluginConfig{
 			F: int(workflowDon.F),
 		}
-		plugin, _, err := pluginFactory.NewReportingPlugin(repConfig)
+		plugin, _, err := pluginFactory.NewReportingPlugin(ctx, repConfig)
 		require.NoError(t, err)
 
 		transmitter := ocr3.NewContractTransmitter(lggr, capabilityRegistry, "")
