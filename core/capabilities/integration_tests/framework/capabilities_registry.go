@@ -34,8 +34,6 @@ type capabilitiesRegistry struct {
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
-
-	sid [32]byte
 }
 
 func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
@@ -100,48 +98,55 @@ func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 		},
 	}
 
-	r.setupDON(triggerDon, streamsTriggerCapability)
+	r.setupDON(triggerDon, []capability{streamsTriggerCapability})
 }
 
-func (r *capabilitiesRegistry) setupDON(triggerDon DonInfo, c capability) {
+func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capability) {
 
-	sid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.LabelledName, c.Version)
-	require.NoError(r.t, err)
+	var hashedCapabilityIDs [][32]byte
 
-	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-		c.CapabilitiesRegistryCapability,
-	})
-	require.NoError(r.t, err)
+	for _, c := range capabilites {
+		id, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.LabelledName, c.Version)
+		require.NoError(r.t, err)
+		hashedCapabilityIDs = append(hashedCapabilityIDs, id)
+
+		_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
+			c.CapabilitiesRegistryCapability,
+		})
+		require.NoError(r.t, err)
+	}
+
 	r.backend.Commit()
-	r.sid = sid
 
 	nodes := []kcr.CapabilitiesRegistryNodeParams{}
-	for _, triggerPeer := range triggerDon.peerIDs {
+	for _, triggerPeer := range donInfo.peerIDs {
 		n, innerErr := peerToNode(r.nodeOperatorID, triggerPeer)
 		require.NoError(r.t, innerErr)
 
-		n.HashedCapabilityIds = [][32]byte{r.sid}
+		n.HashedCapabilityIds = hashedCapabilityIDs
 		nodes = append(nodes, n)
 	}
 
-	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
+	_, err := r.contract.AddNodes(r.backend.transactionOpts, nodes)
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
-	ps, err := peers(triggerDon.peerIDs)
+	ps, err := peers(donInfo.peerIDs)
 	require.NoError(r.t, err)
 
-	configBinary, err := proto.Marshal(c.DefaultConfig)
-	require.NoError(r.t, err)
+	var capabilityConfigurations []kcr.CapabilitiesRegistryCapabilityConfiguration
+	for i, c := range capabilites {
 
-	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
-		{
-			CapabilityId: r.sid,
+		configBinary, err := proto.Marshal(c.DefaultConfig)
+		require.NoError(r.t, err)
+
+		capabilityConfigurations = append(capabilityConfigurations, kcr.CapabilitiesRegistryCapabilityConfiguration{
+			CapabilityId: hashedCapabilityIDs[i],
 			Config:       configBinary,
-		},
+		})
 	}
 
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, true, false, triggerDon.F)
+	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, capabilityConfigurations, true, false, donInfo.F)
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
