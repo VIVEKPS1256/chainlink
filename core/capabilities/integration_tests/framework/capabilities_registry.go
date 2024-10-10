@@ -34,6 +34,8 @@ type capabilitiesRegistry struct {
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
+
+	ocrid [32]byte
 }
 
 func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *capabilitiesRegistry {
@@ -152,6 +154,40 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 
 }
 
+func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
+
+	ocr := kcr.CapabilitiesRegistryCapability{
+		LabelledName:   "offchain_reporting",
+		Version:        "1.0.0",
+		CapabilityType: CapabilityTypeConsensus,
+	}
+	ocrid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, ocr.LabelledName, ocr.Version)
+	require.NoError(r.t, err)
+
+	r.ocrid = ocrid
+
+	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
+		ocr,
+	})
+	require.NoError(r.t, err)
+	r.backend.Commit()
+
+	nodes := []kcr.CapabilitiesRegistryNodeParams{}
+	for _, wfPeer := range workflowDon.peerIDs {
+		n, innerErr := peerToNode(r.nodeOperatorID, wfPeer)
+		require.NoError(r.t, innerErr)
+
+		n.HashedCapabilityIds = [][32]byte{r.ocrid}
+		nodes = append(nodes, n)
+	}
+
+	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
+	require.NoError(r.t, err)
+
+	r.backend.Commit()
+
+}
+
 func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon DonInfo, triggerDon DonInfo,
 	targetDon DonInfo) {
 
@@ -166,29 +202,13 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon Don
 		log.Printf("failed to call GetHashedCapabilityId: %s", err)
 	}
 
-	ocr := kcr.CapabilitiesRegistryCapability{
-		LabelledName:   "offchain_reporting",
-		Version:        "1.0.0",
-		CapabilityType: CapabilityTypeConsensus,
-	}
-	ocrid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, ocr.LabelledName, ocr.Version)
-	require.NoError(r.t, err)
-
 	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
 		writeChain,
-		ocr,
 	})
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
 	nodes := []kcr.CapabilitiesRegistryNodeParams{}
-	for _, wfPeer := range workflowDon.peerIDs {
-		n, innerErr := peerToNode(r.nodeOperatorID, wfPeer)
-		require.NoError(r.t, innerErr)
-
-		n.HashedCapabilityIds = [][32]byte{ocrid}
-		nodes = append(nodes, n)
-	}
 
 	for _, targetPeer := range targetDon.peerIDs {
 		n, innerErr := peerToNode(r.nodeOperatorID, targetPeer)
@@ -211,7 +231,7 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon Don
 
 	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
 		{
-			CapabilityId: ocrid,
+			CapabilityId: r.ocrid,
 			Config:       ccb,
 		},
 	}
