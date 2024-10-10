@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/pb"
 	"github.com/smartcontractkit/chainlink-common/pkg/values"
@@ -74,18 +74,42 @@ func (r *capabilitiesRegistry) getAddress() common.Address {
 	return r.addr
 }
 
+type capability struct {
+	*pb.CapabilityConfig
+	kcr.CapabilitiesRegistryCapability
+}
+
 func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 
-	streamsTrigger := kcr.CapabilitiesRegistryCapability{
-		LabelledName:   "streams-trigger",
-		Version:        "1.0.0",
-		CapabilityType: CapabilityTypeTrigger,
+	triggerCapabilityConfig := newCapabilityConfig()
+	triggerCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTriggerConfig{
+		RemoteTriggerConfig: &pb.RemoteTriggerConfig{
+			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
+			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
+			// F + 1
+			MinResponsesToAggregate: uint32(triggerDon.F) + 1,
+		},
 	}
-	sid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, streamsTrigger.LabelledName, streamsTrigger.Version)
+
+	streamsTriggerCapability := capability{
+		CapabilityConfig: triggerCapabilityConfig,
+		CapabilitiesRegistryCapability: kcr.CapabilitiesRegistryCapability{
+			LabelledName:   "streams-trigger",
+			Version:        "1.0.0",
+			CapabilityType: CapabilityTypeTrigger,
+		},
+	}
+
+	r.setupDON(triggerDon, streamsTriggerCapability)
+}
+
+func (r *capabilitiesRegistry) setupDON(triggerDon DonInfo, c capability) {
+
+	sid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.LabelledName, c.Version)
 	require.NoError(r.t, err)
 
 	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-		streamsTrigger,
+		c.CapabilitiesRegistryCapability,
 	})
 	require.NoError(r.t, err)
 	r.backend.Commit()
@@ -103,6 +127,24 @@ func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
 	require.NoError(r.t, err)
 	r.backend.Commit()
+
+	ps, err := peers(triggerDon.peerIDs)
+	require.NoError(r.t, err)
+
+	configBinary, err := proto.Marshal(c.DefaultConfig)
+	require.NoError(r.t, err)
+
+	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
+		{
+			CapabilityId: r.sid,
+			Config:       configBinary,
+		},
+	}
+
+	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, true, false, triggerDon.F)
+	require.NoError(r.t, err)
+	r.backend.Commit()
+
 }
 
 func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon DonInfo, triggerDon DonInfo,
@@ -170,33 +212,6 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon Don
 	}
 
 	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, false, true, workflowDon.F)
-	require.NoError(r.t, err)
-
-	// trigger DON
-	ps, err = peers(triggerDon.peerIDs)
-	require.NoError(r.t, err)
-
-	triggerCapabilityConfig := newCapabilityConfig()
-	triggerCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTriggerConfig{
-		RemoteTriggerConfig: &pb.RemoteTriggerConfig{
-			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
-			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
-			// F + 1
-			MinResponsesToAggregate: uint32(triggerDon.F) + 1,
-		},
-	}
-
-	configb, err := proto.Marshal(triggerCapabilityConfig)
-	require.NoError(r.t, err)
-
-	cfgs = []kcr.CapabilitiesRegistryCapabilityConfiguration{
-		{
-			CapabilityId: r.sid,
-			Config:       configb,
-		},
-	}
-
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, true, false, triggerDon.F)
 	require.NoError(r.t, err)
 
 	// target DON
