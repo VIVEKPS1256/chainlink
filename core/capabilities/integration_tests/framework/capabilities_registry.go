@@ -186,6 +186,25 @@ func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 
 	r.backend.Commit()
 
+	// workflow DON
+	ps, err := peers(workflowDon.peerIDs)
+	require.NoError(r.t, err)
+
+	cc := newCapabilityConfig()
+	ccb, err := proto.Marshal(cc)
+	require.NoError(r.t, err)
+
+	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
+		{
+			CapabilityId: r.ocrid,
+			Config:       ccb,
+		},
+	}
+
+	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, false, true, workflowDon.F)
+	require.NoError(r.t, err)
+
+	r.backend.Commit()
 }
 
 func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon DonInfo, triggerDon DonInfo,
@@ -221,26 +240,8 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon Don
 	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
 	require.NoError(r.t, err)
 
-	// workflow DON
-	ps, err := peers(workflowDon.peerIDs)
-	require.NoError(r.t, err)
-
-	cc := newCapabilityConfig()
-	ccb, err := proto.Marshal(cc)
-	require.NoError(r.t, err)
-
-	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
-		{
-			CapabilityId: r.ocrid,
-			Config:       ccb,
-		},
-	}
-
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, false, true, workflowDon.F)
-	require.NoError(r.t, err)
-
 	// target DON
-	ps, err = peers(targetDon.peerIDs)
+	ps, err := peers(targetDon.peerIDs)
 	require.NoError(r.t, err)
 
 	targetCapabilityConfig := newCapabilityConfig()
@@ -259,7 +260,7 @@ func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(workflowDon Don
 	remoteTargetConfigBytes, err := proto.Marshal(targetCapabilityConfig)
 	require.NoError(r.t, err)
 
-	cfgs = []kcr.CapabilitiesRegistryCapabilityConfiguration{
+	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
 		{
 			CapabilityId: wid,
 			Config:       remoteTargetConfigBytes,
