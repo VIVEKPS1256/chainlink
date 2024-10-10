@@ -2,7 +2,6 @@ package framework
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -75,8 +74,35 @@ func (r *capabilitiesRegistry) getAddress() common.Address {
 }
 
 type capability struct {
-	*pb.CapabilityConfig
-	kcr.CapabilitiesRegistryCapability
+	donCapabilityConfig *pb.CapabilityConfig
+	registryConfig      kcr.CapabilitiesRegistryCapability
+}
+
+func (r *capabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
+
+	writeChain := kcr.CapabilitiesRegistryCapability{
+		LabelledName:   "write_geth-testnet",
+		Version:        "1.0.0",
+		CapabilityType: CapabilityTypeTarget,
+	}
+
+	targetCapabilityConfig := newCapabilityConfig()
+
+	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
+	require.NoError(r.t, err)
+
+	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
+
+	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
+		RemoteTargetConfig: &pb.RemoteTargetConfig{
+			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
+		},
+	}
+
+	r.setupDON(targetDon, []capability{{
+		donCapabilityConfig: targetCapabilityConfig,
+		registryConfig:      writeChain,
+	}})
 }
 
 func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
@@ -92,8 +118,8 @@ func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 	}
 
 	streamsTriggerCapability := capability{
-		CapabilityConfig: triggerCapabilityConfig,
-		CapabilitiesRegistryCapability: kcr.CapabilitiesRegistryCapability{
+		donCapabilityConfig: triggerCapabilityConfig,
+		registryConfig: kcr.CapabilitiesRegistryCapability{
 			LabelledName:   "streams-trigger",
 			Version:        "1.0.0",
 			CapabilityType: CapabilityTypeTrigger,
@@ -103,20 +129,33 @@ func (r *capabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
 	r.setupDON(triggerDon, []capability{streamsTriggerCapability})
 }
 
+func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
+
+	ocr := kcr.CapabilitiesRegistryCapability{
+		LabelledName:   "offchain_reporting",
+		Version:        "1.0.0",
+		CapabilityType: CapabilityTypeConsensus,
+	}
+
+	r.setupDON(workflowDon, []capability{{
+		donCapabilityConfig: newCapabilityConfig(),
+		registryConfig:      ocr,
+	}})
+}
+
 func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capability) {
 
 	var hashedCapabilityIDs [][32]byte
 
 	for _, c := range capabilites {
-		id, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.LabelledName, c.Version)
+		id, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.registryConfig.LabelledName, c.registryConfig.Version)
 		require.NoError(r.t, err)
 		hashedCapabilityIDs = append(hashedCapabilityIDs, id)
-		require.NoError(r.t, err)
 	}
 
 	var registryCapabilities []kcr.CapabilitiesRegistryCapability
 	for _, c := range capabilites {
-		registryCapabilities = append(registryCapabilities, c.CapabilitiesRegistryCapability)
+		registryCapabilities = append(registryCapabilities, c.registryConfig)
 	}
 
 	_, err := r.contract.AddCapabilities(r.backend.transactionOpts, registryCapabilities)
@@ -143,7 +182,7 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 	var capabilityConfigurations []kcr.CapabilitiesRegistryCapabilityConfiguration
 	for i, c := range capabilites {
 
-		configBinary, err := proto.Marshal(c.DefaultConfig)
+		configBinary, err := proto.Marshal(c.donCapabilityConfig)
 		require.NoError(r.t, err)
 
 		capabilityConfigurations = append(capabilityConfigurations, kcr.CapabilitiesRegistryCapabilityConfiguration{
@@ -156,115 +195,6 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
-}
-
-func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
-
-	ocr := kcr.CapabilitiesRegistryCapability{
-		LabelledName:   "offchain_reporting",
-		Version:        "1.0.0",
-		CapabilityType: CapabilityTypeConsensus,
-	}
-
-	r.setupDON(workflowDon, []capability{{
-		CapabilityConfig:               newCapabilityConfig(),
-		CapabilitiesRegistryCapability: ocr,
-	}})
-}
-
-func (r *capabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
-
-	writeChain := kcr.CapabilitiesRegistryCapability{
-		LabelledName: "write_geth-testnet",
-		Version:      "1.0.0",
-
-		CapabilityType: CapabilityTypeTarget,
-	}
-
-	targetCapabilityConfig := newCapabilityConfig()
-
-	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
-	require.NoError(r.t, err)
-
-	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
-
-	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
-		RemoteTargetConfig: &pb.RemoteTargetConfig{
-			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
-		},
-	}
-
-	r.setupDON(targetDon, []capability{{
-		CapabilityConfig:               targetCapabilityConfig,
-		CapabilitiesRegistryCapability: writeChain,
-	}})
-}
-
-func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(
-
-	targetDon DonInfo) {
-
-	writeChain := kcr.CapabilitiesRegistryCapability{
-		LabelledName: "write_geth-testnet",
-		Version:      "1.0.0",
-
-		CapabilityType: CapabilityTypeTarget,
-	}
-	wid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, writeChain.LabelledName, writeChain.Version)
-	if err != nil {
-		log.Printf("failed to call GetHashedCapabilityId: %s", err)
-	}
-
-	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-		writeChain,
-	})
-	require.NoError(r.t, err)
-	r.backend.Commit()
-
-	nodes := []kcr.CapabilitiesRegistryNodeParams{}
-
-	for _, targetPeer := range targetDon.peerIDs {
-		n, innerErr := peerToNode(r.nodeOperatorID, targetPeer)
-		require.NoError(r.t, innerErr)
-
-		n.HashedCapabilityIds = [][32]byte{wid}
-		nodes = append(nodes, n)
-	}
-
-	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
-	require.NoError(r.t, err)
-
-	// target DON
-	ps, err := peers(targetDon.peerIDs)
-	require.NoError(r.t, err)
-
-	targetCapabilityConfig := newCapabilityConfig()
-
-	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
-	require.NoError(r.t, err)
-
-	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
-
-	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
-		RemoteTargetConfig: &pb.RemoteTargetConfig{
-			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
-		},
-	}
-
-	remoteTargetConfigBytes, err := proto.Marshal(targetCapabilityConfig)
-	require.NoError(r.t, err)
-
-	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
-		{
-			CapabilityId: wid,
-			Config:       remoteTargetConfigBytes,
-		},
-	}
-
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, true, false, targetDon.F)
-	require.NoError(r.t, err)
-
-	r.backend.Commit()
 }
 
 func newCapabilityConfig() *pb.CapabilityConfig {
