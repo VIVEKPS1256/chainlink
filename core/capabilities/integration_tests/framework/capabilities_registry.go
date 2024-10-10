@@ -121,8 +121,8 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 	r.backend.Commit()
 
 	nodes := []kcr.CapabilitiesRegistryNodeParams{}
-	for _, triggerPeer := range donInfo.peerIDs {
-		n, innerErr := peerToNode(r.nodeOperatorID, triggerPeer)
+	for _, peerID := range donInfo.peerIDs {
+		n, innerErr := peerToNode(r.nodeOperatorID, peerID)
 		require.NoError(r.t, innerErr)
 
 		n.HashedCapabilityIds = hashedCapabilityIDs
@@ -148,7 +148,7 @@ func (r *capabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 		})
 	}
 
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, capabilityConfigurations, true, false, donInfo.F)
+	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, capabilityConfigurations, true, donInfo.AcceptsWorkflows, donInfo.F)
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
@@ -161,50 +161,13 @@ func (r *capabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
 		Version:        "1.0.0",
 		CapabilityType: CapabilityTypeConsensus,
 	}
-	ocrid, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, ocr.LabelledName, ocr.Version)
-	require.NoError(r.t, err)
-
-	r.ocrid = ocrid
-
-	_, err = r.contract.AddCapabilities(r.backend.transactionOpts, []kcr.CapabilitiesRegistryCapability{
-		ocr,
-	})
-	require.NoError(r.t, err)
-	r.backend.Commit()
-
-	nodes := []kcr.CapabilitiesRegistryNodeParams{}
-	for _, wfPeer := range workflowDon.peerIDs {
-		n, innerErr := peerToNode(r.nodeOperatorID, wfPeer)
-		require.NoError(r.t, innerErr)
-
-		n.HashedCapabilityIds = [][32]byte{r.ocrid}
-		nodes = append(nodes, n)
-	}
-
-	_, err = r.contract.AddNodes(r.backend.transactionOpts, nodes)
-	require.NoError(r.t, err)
-
-	r.backend.Commit()
-
-	// workflow DON
-	ps, err := peers(workflowDon.peerIDs)
-	require.NoError(r.t, err)
 
 	cc := newCapabilityConfig()
-	ccb, err := proto.Marshal(cc)
-	require.NoError(r.t, err)
 
-	cfgs := []kcr.CapabilitiesRegistryCapabilityConfiguration{
-		{
-			CapabilityId: r.ocrid,
-			Config:       ccb,
-		},
-	}
-
-	_, err = r.contract.AddDON(r.backend.transactionOpts, ps, cfgs, false, true, workflowDon.F)
-	require.NoError(r.t, err)
-
-	r.backend.Commit()
+	r.setupDON(workflowDon, []capability{{
+		CapabilityConfig:               cc,
+		CapabilitiesRegistryCapability: ocr,
+	}})
 }
 
 func (r *capabilitiesRegistry) setupCapabilitiesRegistryContract(

@@ -26,7 +26,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 2, NumNodes: 7, F: 2})
+	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 2, NumNodes: 7, F: 2, AcceptsWorkflows: true})
 	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Trigger", ID: 1, NumNodes: 7, F: 2})
 	targetDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Target", ID: 3, NumNodes: 4, F: 1})
 

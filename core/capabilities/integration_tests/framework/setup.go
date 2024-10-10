@@ -42,10 +42,11 @@ var (
 
 type DonInfo struct {
 	commoncap.DON
-	name       string
-	keys       []ethkey.KeyV2
-	KeyBundles []ocr2key.KeyBundle
-	peerIDs    []peer
+	name             string
+	keys             []ethkey.KeyV2
+	KeyBundles       []ocr2key.KeyBundle
+	peerIDs          []peer
+	acceptsWorkflows bool
 }
 
 func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, triggerDonInfo DonInfo, targetDonInfo DonInfo,
@@ -146,10 +147,11 @@ func startNewNode(ctx context.Context,
 }
 
 type Don struct {
-	Name     string
-	ID       uint32
-	NumNodes int
-	F        uint8
+	Name             string
+	ID               uint32
+	NumNodes         int
+	F                uint8
+	AcceptsWorkflows bool
 }
 
 func CreateDonInfo(t *testing.T, don Don) DonInfo {
@@ -168,10 +170,11 @@ func CreateDonInfo(t *testing.T, don Don) DonInfo {
 
 	donInfo := DonInfo{
 		DON: commoncap.DON{
-			ID:            don.ID,
-			Members:       donPeers,
-			F:             don.F,
-			ConfigVersion: 1,
+			ID:               don.ID,
+			Members:          donPeers,
+			F:                don.F,
+			ConfigVersion:    1,
+			AcceptsWorkflows: don.AcceptsWorkflows,
 		},
 		name:       don.Name,
 		peerIDs:    peerIDs,
