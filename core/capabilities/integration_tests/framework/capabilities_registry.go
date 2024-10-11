@@ -26,14 +26,14 @@ const (
 
 type CapabilitiesRegistry struct {
 	t              *testing.T
-	backend        *ethBlockchain
+	backend        *EthBlockchain
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
 	nextDonID      int
 }
 
-func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *CapabilitiesRegistry {
+func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *EthBlockchain) *CapabilitiesRegistry {
 	addr, _, contract, err := kcr.DeployCapabilitiesRegistry(backend.transactionOpts, backend)
 	require.NoError(t, err)
 	backend.Commit()

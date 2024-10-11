@@ -1,14 +1,23 @@
 package keystone
 
 import (
+	"context"
 	"encoding/hex"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
 
+	commoncap "github.com/smartcontractkit/chainlink-common/pkg/capabilities"
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/datastreams"
+	"github.com/smartcontractkit/chainlink-common/pkg/services/servicetest"
 	v3 "github.com/smartcontractkit/chainlink-common/pkg/types/mercury/v3"
+	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
+	"github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/feeds_consumer"
+	"github.com/smartcontractkit/chainlink/v2/core/services/job"
 	"github.com/smartcontractkit/libocr/offchainreporting2plus/chains/evmutil"
 
 	ocrTypes "github.com/smartcontractkit/libocr/offchainreporting2plus/types"
@@ -17,6 +26,69 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/services/keystore/keys/ocr2key"
 	"github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/mercury/v3/reportcodec"
 )
+
+var (
+	workflowName    = "abcdef0123"
+	workflowOwnerID = "0100000000000000000000000000000000000001"
+)
+
+func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration,
+	targetDonInfo framework.DonConfiguration,
+	getJob func(t *testing.T,
+		workflowName string,
+		workflowOwner string,
+		consumerAddr common.Address) job.Job) (*feeds_consumer.KeystoneFeedsConsumer, *framework.ReportsSink) {
+	lggr := logger.TestLogger(t)
+	lggr.SetLogLevel(zapcore.InfoLevel)
+
+	ethBlockchain := framework.NewEthBlockchain(t, 1000, 1*time.Second)
+
+	msgBroker := framework.NewTestAsyncMessageBroker(t, 1000)
+
+	servicetest.Run(t, msgBroker)
+	servicetest.Run(t, ethBlockchain)
+
+	capabilitiesRegistry := framework.NewCapabilitiesRegistry(ctx, t, ethBlockchain)
+
+	sink := framework.NewReportsSink()
+
+	triggerDon := framework.NewDON(ctx, t, lggr, triggerDonInfo, msgBroker,
+		[]commoncap.DON{},
+		ethBlockchain, capabilitiesRegistry)
+
+	triggerDon.AddTriggerCapability(sink)
+
+	workflowDon := framework.NewDON(ctx, t, lggr, workflowDonInfo, msgBroker,
+		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
+		ethBlockchain, capabilitiesRegistry)
+
+	workflowDon.AddOCR3NonStandardCapability(ctx, t)
+	workflowDon.Initialise()
+
+	writeTargetDon := framework.NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
+		[]commoncap.DON{},
+		ethBlockchain, capabilitiesRegistry)
+
+	forwarderAddr, _ := SetupForwarderContract(t, workflowDon, ethBlockchain)
+	consumerAddr, consumer := SetupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
+
+	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
+	require.NoError(t, err)
+
+	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
+	workflowDon.AddJob(&job)
+
+	triggerDon.Initialise()
+
+	writeTargetDon.Initialise()
+
+	triggerDon.Start(ctx, t)
+	writeTargetDon.Start(ctx, t)
+	workflowDon.Start(ctx, t)
+
+	servicetest.Run(t, sink)
+	return consumer, sink
+}
 
 func createFeedReport(t *testing.T, price *big.Int, observationTimestamp int64,
 	feedIDString string,

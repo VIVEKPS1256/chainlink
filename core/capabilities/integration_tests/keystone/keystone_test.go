@@ -24,13 +24,11 @@ import (
 func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 	ctx := testutils.Context(t)
 
-	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
-	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Workflow", NumNodes: 7, F: 2, AcceptsWorkflows: true})
+	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.NewDonConfigurationParams{Name: "Workflow", NumNodes: 7, F: 2, AcceptsWorkflows: true})
 	require.NoError(t, err)
-	triggerDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Trigger", NumNodes: 7, F: 2})
+	triggerDonConfiguration, err := framework.NewDonConfiguration(framework.NewDonConfigurationParams{Name: "Trigger", NumNodes: 7, F: 2})
 	require.NoError(t, err)
-	targetDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Target", NumNodes: 4, F: 1})
+	targetDonConfiguration, err := framework.NewDonConfiguration(framework.NewDonConfigurationParams{Name: "Target", NumNodes: 4, F: 1})
 	require.NoError(t, err)
 
 	feedCount := 3
@@ -48,7 +46,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonConfiguration, triggerDonConfiguration, targetDonConfiguration, createKeystoneWorkflowJob)
+	consumer, triggerSink := SetupDons(ctx, t, workflowDonConfiguration, triggerDonConfiguration, targetDonConfiguration, createKeystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonConfiguration.KeyBundles),
@@ -67,9 +65,9 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
+	workflowDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
+	triggerDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
+	targetDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
 
 	feedCount := 3
 	var feedIDs []string
