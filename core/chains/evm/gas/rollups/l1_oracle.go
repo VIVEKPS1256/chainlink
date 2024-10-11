@@ -17,7 +17,7 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/assets"
 	evmconfig "github.com/smartcontractkit/chainlink/v2/core/chains/evm/config"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/chaintype"
-	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml"
+	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml/daoracle"
 )
 
 // L1Oracle provides interface for fetching L1-specific fee components if the chain is an L2.
@@ -57,11 +57,11 @@ func NewL1GasOracle(lggr logger.Logger, ethClient l1OracleClient, chainType chai
 	var err error
 	if daOracle != nil {
 		switch daOracle.OracleType() {
-		case toml.OPStack:
+		case daoracle.OPStack:
 			l1Oracle, err = NewOpStackL1GasOracle(lggr, ethClient, chainType, daOracle)
-		case toml.Arbitrum:
+		case daoracle.Arbitrum:
 			l1Oracle, err = NewArbitrumL1GasOracle(lggr, ethClient)
-		case toml.ZKSync:
+		case daoracle.ZKSync:
 			l1Oracle = NewZkSyncL1GasOracle(lggr, ethClient)
 		default:
 			err = fmt.Errorf("unsupported DA oracle type %s. Going forward all chain configs should specify an oracle type", daOracle.OracleType())

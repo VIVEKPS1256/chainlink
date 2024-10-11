@@ -7,6 +7,7 @@ import (
 
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/assets"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml"
+	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml/daoracle"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 )
 
@@ -124,10 +125,10 @@ func (g *gasEstimatorConfig) EstimateLimit() bool {
 }
 
 type daOracleConfig struct {
-	c toml.DAOracle
+	c daoracle.DAOracle
 }
 
-func (d *daOracleConfig) OracleType() toml.OracleType {
+func (d *daOracleConfig) OracleType() daoracle.OracleType {
 	return d.c.OracleType
 }
 

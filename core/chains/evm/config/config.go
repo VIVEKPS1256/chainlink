@@ -11,7 +11,7 @@ import (
 
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/assets"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/chaintype"
-	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml"
+	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml/daoracle"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 )
 
@@ -165,7 +165,7 @@ type BlockHistory interface {
 }
 
 type DAOracle interface {
-	OracleType() toml.OracleType
+	OracleType() daoracle.OracleType
 	OracleAddress() *types.EIP55Address
 	CustomGasPriceCalldata() string
 }

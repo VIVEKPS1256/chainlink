@@ -9,7 +9,7 @@ import (
 
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities/ccip/ocrimpls"
 	cctypes "github.com/smartcontractkit/chainlink/v2/core/capabilities/ccip/types"
-	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml"
+	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/config/toml/daoracle"
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -598,7 +598,7 @@ type TestDAOracleConfig struct {
 	evmconfig.DAOracle
 }
 
-func (d *TestDAOracleConfig) OracleType() toml.OracleType { return toml.OPStack }
+func (d *TestDAOracleConfig) OracleType() daoracle.OracleType { return daoracle.OPStack }
 func (d *TestDAOracleConfig) OracleAddress() *types.EIP55Address {
 	a, err := types.NewEIP55Address("0x420000000000000000000000000000000000000F")
 	if err != nil {
