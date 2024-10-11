@@ -26,6 +26,10 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 	testTransmissionSchedule(t, "2s", "allAtOnce")
 }
 
+func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
+	testTransmissionSchedule(t, "2s", "oneAtATime")
+}
+
 func testTransmissionSchedule(t *testing.T, deltaStage string, schedule string) {
 	ctx := testutils.Context(t)
 	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.NewDonConfigurationParams{Name: "Workflow", NumNodes: 7, F: 2, AcceptsWorkflows: true})
@@ -65,44 +69,6 @@ func testTransmissionSchedule(t *testing.T, deltaStage string, schedule string) 
 
 	waitForConsumerReports(ctx, t, consumer, reports)
 }
-
-/*
-func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
-	ctx := testutils.Context(t)
-
-	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
-	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.NewDonConfigurationParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
-
-	feedCount := 3
-	var feedIDs []string
-	for i := 0; i < feedCount; i++ {
-		feedIDs = append(feedIDs, newFeedID(t))
-	}
-
-	createKeystoneWorkflowJob := func(t *testing.T,
-		workflowName string,
-		workflowOwner string,
-		consumerContractAddr common.Address) job.Job {
-
-		return createKeystoneWorkflowJob(t, workflowName, workflowOwner, feedIDs, consumerContractAddr, "2s", "oneAtATime")
-
-	}
-
-	consumer, triggerSink := framework.setupKeystoneDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
-
-	reports := []*datastreams.FeedReport{
-		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),
-		createFeedReport(t, big.NewInt(3), 7, feedIDs[1], triggerDonInfo.KeyBundles),
-		createFeedReport(t, big.NewInt(2), 6, feedIDs[2], triggerDonInfo.KeyBundles),
-	}
-
-	triggerSink.SendReports(reports)
-
-	waitForConsumerReports(ctx, t, consumer, reports)
-}*/
 
 func newFeedID(t *testing.T) string {
 	buf := [32]byte{}
