@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -32,7 +31,7 @@ var (
 	workflowOwnerID = "0100000000000000000000000000000000000001"
 )
 
-func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration,
+func setupDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration,
 	targetDonInfo framework.DonConfiguration,
 	getJob func(t *testing.T,
 		workflowName string,
@@ -41,46 +40,34 @@ func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonC
 	lggr := logger.TestLogger(t)
 	lggr.SetLogLevel(zapcore.InfoLevel)
 
-	ethBlockchain := framework.NewEthBlockchain(t, 1000, 1*time.Second)
+	donContext := framework.CreateDonContext(ctx, t)
 
-	msgBroker := framework.NewTestAsyncMessageBroker(t, 1000)
-
-	servicetest.Run(t, msgBroker)
-	servicetest.Run(t, ethBlockchain)
-
-	capabilitiesRegistry := framework.NewCapabilitiesRegistry(ctx, t, ethBlockchain)
-
-	sink := framework.NewReportsSink()
-
-	triggerDon := framework.NewDON(ctx, t, lggr, triggerDonInfo, msgBroker,
-		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistry)
-
-	triggerDon.AddTriggerCapability(sink)
-
-	workflowDon := framework.NewDON(ctx, t, lggr, workflowDonInfo, msgBroker,
+	workflowDon := framework.NewDON(ctx, t, lggr, workflowDonInfo,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
-		ethBlockchain, capabilitiesRegistry)
+		donContext)
 
 	workflowDon.AddOCR3NonStandardCapability(ctx, t)
 	workflowDon.Initialise()
 
-	writeTargetDon := framework.NewDON(ctx, t, lggr, targetDonInfo, msgBroker,
-		[]commoncap.DON{},
-		ethBlockchain, capabilitiesRegistry)
-
-	forwarderAddr, _ := SetupForwarderContract(t, workflowDon, ethBlockchain)
-	consumerAddr, consumer := SetupConsumerContract(t, ethBlockchain, forwarderAddr, workflowOwnerID, workflowName)
-
-	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
-	require.NoError(t, err)
+	forwarderAddr, _ := SetupForwarderContract(t, workflowDon, donContext.EthBlockchain)
+	consumerAddr, consumer := SetupConsumerContract(t, donContext.EthBlockchain, forwarderAddr, workflowOwnerID, workflowName)
 
 	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
 	workflowDon.AddJob(&job)
 
-	triggerDon.Initialise()
-
+	writeTargetDon := framework.NewDON(ctx, t, lggr, targetDonInfo,
+		[]commoncap.DON{}, donContext)
+	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
+	require.NoError(t, err)
 	writeTargetDon.Initialise()
+
+	sink := framework.NewReportsSink()
+
+	triggerDon := framework.NewDON(ctx, t, lggr, triggerDonInfo,
+		[]commoncap.DON{}, donContext)
+
+	triggerDon.AddTriggerCapability(sink)
+	triggerDon.Initialise()
 
 	triggerDon.Start(ctx, t)
 	writeTargetDon.Start(ctx, t)

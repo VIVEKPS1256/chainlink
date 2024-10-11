@@ -70,13 +70,13 @@ type DON struct {
 	triggerFactories []triggerFactory
 }
 
-func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig DonConfiguration, broker *testAsyncMessageBroker,
-	dependentDONs []commoncap.DON, ethBackend *EthBlockchain, capabilitiesRegistry *CapabilitiesRegistry) *DON {
+func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig DonConfiguration,
+	dependentDONs []commoncap.DON, donContext DonContext) *DON {
 
-	don := &DON{lggr: lggr.Named(donConfig.name), config: donConfig, capabilitiesRegistry: capabilitiesRegistry}
+	don := &DON{lggr: lggr.Named(donConfig.name), config: donConfig, capabilitiesRegistry: donContext.capabilityRegistry}
 
 	for i, member := range donConfig.Members {
-		dispatcher := broker.NewDispatcherForNode(member)
+		dispatcher := donContext.p2pNetwork.NewDispatcherForNode(member)
 		capabilityRegistry := capabilities.NewRegistry(lggr)
 
 		nodeInfo := commoncap.Node{
@@ -94,7 +94,8 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig Don
 		don.nodes = append(don.nodes, cn)
 
 		cn.start = func() {
-			node := startNewNode(ctx, t, lggr.Named(donConfig.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capabilitiesRegistry.getAddress(), dispatcher,
+			node := startNewNode(ctx, t, lggr.Named(donConfig.name+"-"+strconv.Itoa(i)), nodeInfo, donContext.EthBlockchain,
+				donContext.capabilityRegistry.getAddress(), dispatcher,
 				peerWrapper{peer: p2pPeer{member}}, capabilityRegistry,
 				donConfig.keys[i], func(c *chainlink.Config) {
 					if don.nodeConfigModifier != nil {

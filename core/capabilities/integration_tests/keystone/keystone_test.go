@@ -37,7 +37,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 		feedIDs = append(feedIDs, newFeedID(t))
 	}
 
-	createKeystoneWorkflowJob := func(t *testing.T,
+	keystoneWorkflowJob := func(t *testing.T,
 		workflowName string,
 		workflowOwner string,
 		consumerContractAddr common.Address) job.Job {
@@ -46,7 +46,7 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := SetupDons(ctx, t, workflowDonConfiguration, triggerDonConfiguration, targetDonConfiguration, createKeystoneWorkflowJob)
+	consumer, triggerSink := setupDons(ctx, t, workflowDonConfiguration, triggerDonConfiguration, targetDonConfiguration, keystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonConfiguration.KeyBundles),
@@ -84,7 +84,7 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
+	consumer, triggerSink := framework.setupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
 		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),

@@ -16,7 +16,27 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/internal/testutils"
 	"github.com/smartcontractkit/chainlink/v2/core/services/chainlink"
 	"github.com/smartcontractkit/chainlink/v2/core/services/job"
+
+	"time"
+
+	"github.com/smartcontractkit/chainlink-common/pkg/services/servicetest"
 )
+
+type DonContext struct {
+	EthBlockchain      *EthBlockchain
+	p2pNetwork         *MockRageP2PNetwork
+	capabilityRegistry *CapabilitiesRegistry
+}
+
+func CreateDonContext(ctx context.Context, t *testing.T) DonContext {
+	ethBlockchain := NewEthBlockchain(t, 1000, 1*time.Second)
+	rageP2PNetwork := NewMockRageP2PNetwork(t, 1000)
+	capabilitiesRegistry := NewCapabilitiesRegistry(ctx, t, ethBlockchain)
+
+	servicetest.Run(t, rageP2PNetwork)
+	servicetest.Run(t, ethBlockchain)
+	return DonContext{EthBlockchain: ethBlockchain, p2pNetwork: rageP2PNetwork, capabilityRegistry: capabilitiesRegistry}
+}
 
 func Context(tb testing.TB) context.Context {
 	return testutils.Context(tb)
