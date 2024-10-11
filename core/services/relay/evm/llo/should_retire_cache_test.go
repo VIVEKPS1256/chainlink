@@ -32,7 +32,7 @@ func Test_ShouldRetireCache(t *testing.T) {
 
 	servicetest.Run(t, src)
 
-	testutils.WaitForLogMessage(t, observedLogs, "checkShouldRetire: Marking retired")
+	testutils.WaitForLogMessage(t, observedLogs, "markRetired: Got retired config digest")
 
 	shouldRetire, err := src.ShouldRetire(retiredConfigDigest)
 	require.NoError(t, err)

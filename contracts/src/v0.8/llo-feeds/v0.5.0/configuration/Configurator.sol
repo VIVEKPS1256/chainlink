@@ -113,9 +113,6 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
 
     ConfigurationState memory configurationState = s_configurationStates[donId];
     uint256 idx = configurationState.isFlipped ? 1 : 0;
-    if (predecessorConfigDigest != s_configurationStates[donId].configDigest[idx]) {
-      revert("Wrong predecessorConfigDigest");
-    }
     require(
       predecessorConfigDigest == s_configurationStates[donId].configDigest[idx],
       "Invalid predecessorConfigDigest"
@@ -136,7 +133,20 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
   }
 
   /// @inheritdoc IConfigurator
-  // TODO: unit tests
+  // This will trigger the following:
+  // - Offchain ShouldRetireCache will start returning true for the old (production)
+  //   protocol instance
+  // - Once the old production instance retires it will generate a handover
+  //   retirement report
+  // - The staging instance will become the new production instance once
+  //   any honest oracle that is on both instances forward the retirement
+  //   report from the old instance to the new instance via the
+  //   PredecessorRetirementReportCache
+  //
+  // Note: the promotion flow only works if the previous production instance
+  // is working correctly & generating reports. If that's not the case, the
+  // owner is expected to "setProductionConfig" directly instead. This will
+  // cause "gaps" to be created, but that seems unavoidable in such a scenario.
   function promoteStagingConfig(bytes32 donId, bool isFlipped) external onlyOwner {
     ConfigurationState storage configurationState = s_configurationStates[donId];
     if (isFlipped == configurationState.isFlipped) {
@@ -149,20 +159,6 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
     } else {
       revert("PromoteStagingConfig: isFlipped must match current state");
     }
-    // this will trigger the following:
-    // - offchain ShouldRetireCache will start returning true for the old (production)
-    //   protocol instance
-    // - once the old production instance retires it will generate a handover
-    //   retirement report
-    // - the staging instance will become the new production instance once
-    //   any honest oracle that is on both instances forward the retirement
-    //   report from the old instance to the new instance via the
-    //   PredecessorRetirementReportCache
-    //
-    // Note: the promotion flow only works if the previous production instance
-    // is working correctly & generating reports. If that's not the case, the
-    // owner is expected to "setProductionConfig" directly instead. This will
-    // cause "gaps" to be created, but that seems unavoidable in such a scenario.
   }
 
   /// @notice Sets config based on the given arguments
@@ -188,9 +184,6 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
     bool isProduction
   ) internal {
     ConfigurationState storage configurationState = s_configurationStates[donId];
-
-    // TODO: If its staging, it MUST have a predecessor config digest
-    // TODO: key uniqueness checking?
 
     uint64 newConfigCount = ++configurationState.configCount;
 
@@ -283,7 +276,7 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
       )
     );
     uint256 prefixMask = type(uint256).max << (256 - 16); // 0xFFFF00..00
-    // 0x0006 corresponds to ConfigDigestPrefixLLO in libocr
+    // 0x0009 corresponds to ConfigDigestPrefixLLO in libocr
     uint256 prefix = 0x0009 << (256 - 16); // 0x000900..00
     return bytes32((prefix & prefixMask) | (h & ~prefixMask));
   }
@@ -295,7 +288,7 @@ contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface,
 
   /// @inheritdoc TypeAndVersionInterface
   function typeAndVersion() external pure override returns (string memory) {
-    return "Configurator 0.4.0";
+    return "Configurator 0.5.0";
   }
 
   modifier checkConfigValid(uint256 numSigners, uint256 f) {
