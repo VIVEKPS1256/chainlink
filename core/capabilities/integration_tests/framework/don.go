@@ -41,7 +41,7 @@ type CapabilityNode struct {
 }
 
 type DON struct {
-	config               DonConfiguration
+	DonConfiguration
 	lggr                 logger.Logger
 	nodes                []*CapabilityNode
 	jobs                 []*job.Job
@@ -58,7 +58,7 @@ type DON struct {
 func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig DonConfiguration, broker *testAsyncMessageBroker,
 	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capabilitiesRegistry *CapabilitiesRegistry) *DON {
 
-	don := &DON{lggr: lggr.Named(donConfig.name), config: donConfig, capabilitiesRegistry: capabilitiesRegistry}
+	don := &DON{lggr: lggr.Named(donConfig.name), DonConfiguration: donConfig, capabilitiesRegistry: capabilitiesRegistry}
 
 	for i, member := range donConfig.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
@@ -96,14 +96,12 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig Don
 }
 
 func (d *DON) Initialise() {
-	id := d.capabilitiesRegistry.setupDON(d.config, d.capabilities)
-	fmt.Printf("DON ID: %d\n", id)
-	//d.config.DON.ID = uint32(id)
+	id := d.capabilitiesRegistry.setupDON(d.DonConfiguration, d.capabilities)
+	d.DonConfiguration.DON.ID = uint32(id)
 }
 
 type DonParams struct {
 	Name             string
-	ID               uint32
 	NumNodes         int
 	F                uint8
 	AcceptsWorkflows bool
@@ -133,7 +131,6 @@ func NewDonConfiguration(don DonParams) (DonConfiguration, error) {
 
 	donConfiguration := DonConfiguration{
 		DON: commoncap.DON{
-			ID:               don.ID,
 			Members:          donPeers,
 			F:                don.F,
 			ConfigVersion:    1,
@@ -161,11 +158,11 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 	}
 
 	if d.addOCR3NonStandardCapability {
-		libocr := NewMockLibOCR(t, d.config.F, 1*time.Second)
+		libocr := NewMockLibOCR(t, d.DonConfiguration.F, 1*time.Second)
 		servicetest.Run(t, libocr)
 
 		for _, node := range d.nodes {
-			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.config.F, node.KeyBundle)
+			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.DonConfiguration.F, node.KeyBundle)
 		}
 	}
 
@@ -186,7 +183,7 @@ func (d *DON) AddTriggerCapability(triggerFactory triggerFactory) {
 			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
 			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
 			// F + 1
-			MinResponsesToAggregate: uint32(d.config.F) + 1,
+			MinResponsesToAggregate: uint32(d.DonConfiguration.F) + 1,
 		},
 	}
 

@@ -26,11 +26,11 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Workflow", ID: 2, NumNodes: 7, F: 2, AcceptsWorkflows: true})
+	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Workflow", NumNodes: 7, F: 2, AcceptsWorkflows: true})
 	require.NoError(t, err)
-	triggerDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Trigger", ID: 1, NumNodes: 7, F: 2})
+	triggerDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Trigger", NumNodes: 7, F: 2})
 	require.NoError(t, err)
-	targetDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
+	targetDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Target", NumNodes: 4, F: 1})
 	require.NoError(t, err)
 
 	feedCount := 3
