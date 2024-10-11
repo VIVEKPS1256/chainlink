@@ -12,7 +12,6 @@ import (
 
 	commoncap "github.com/smartcontractkit/chainlink-common/pkg/capabilities"
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/datastreams"
-	"github.com/smartcontractkit/chainlink-common/pkg/services/servicetest"
 	v3 "github.com/smartcontractkit/chainlink-common/pkg/types/mercury/v3"
 	"github.com/smartcontractkit/chainlink/v2/core/capabilities/integration_tests/framework"
 	"github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/feeds_consumer"
@@ -31,50 +30,62 @@ var (
 	workflowOwnerID = "0100000000000000000000000000000000000001"
 )
 
-func setupDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration,
+func setupKeystoneDons(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration,
 	targetDonInfo framework.DonConfiguration,
-	getJob func(t *testing.T,
+	keystoneJobFactory func(t *testing.T,
 		workflowName string,
 		workflowOwner string,
-		consumerAddr common.Address) job.Job) (*feeds_consumer.KeystoneFeedsConsumer, *framework.ReportsSink) {
+		consumerAddr common.Address) job.Job, sink *framework.ReportsSink) *feeds_consumer.KeystoneFeedsConsumer {
 	lggr := logger.TestLogger(t)
 	lggr.SetLogLevel(zapcore.InfoLevel)
 
 	donContext := framework.CreateDonContext(ctx, t)
 
+	workflowDon := createWorkflowDon(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, lggr, donContext)
+
+	forwarderAddr, _ := SetupForwarderContract(t, workflowDon, donContext.EthBlockchain)
+	consumerAddr, consumer := SetupConsumerContract(t, donContext.EthBlockchain, forwarderAddr, workflowOwnerID, workflowName)
+
+	job := keystoneJobFactory(t, workflowName, workflowOwnerID, consumerAddr)
+	workflowDon.AddJob(&job)
+
+	writeTargetDon := createWriteTargetDon(ctx, t, lggr, targetDonInfo, donContext, forwarderAddr)
+
+	triggerDon := createTriggerDon(ctx, t, lggr, triggerDonInfo, donContext, sink)
+
+	triggerDon.Start(ctx, t)
+	writeTargetDon.Start(ctx, t)
+	workflowDon.Start(ctx, t)
+
+	return consumer
+}
+
+func createTriggerDon(ctx context.Context, t *testing.T, lggr logger.SugaredLogger, triggerDonInfo framework.DonConfiguration, donContext framework.DonContext, sink *framework.ReportsSink) *framework.DON {
+	triggerDon := framework.NewDON(ctx, t, lggr, triggerDonInfo,
+		[]commoncap.DON{}, donContext)
+
+	triggerDon.AddTriggerCapability(sink)
+	triggerDon.Initialise()
+	return triggerDon
+}
+
+func createWriteTargetDon(ctx context.Context, t *testing.T, lggr logger.SugaredLogger, targetDonInfo framework.DonConfiguration, donContext framework.DonContext, forwarderAddr common.Address) *framework.DON {
+	writeTargetDon := framework.NewDON(ctx, t, lggr, targetDonInfo,
+		[]commoncap.DON{}, donContext)
+	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
+	require.NoError(t, err)
+	writeTargetDon.Initialise()
+	return writeTargetDon
+}
+
+func createWorkflowDon(ctx context.Context, t *testing.T, workflowDonInfo framework.DonConfiguration, triggerDonInfo framework.DonConfiguration, targetDonInfo framework.DonConfiguration, lggr logger.SugaredLogger, donContext framework.DonContext) *framework.DON {
 	workflowDon := framework.NewDON(ctx, t, lggr, workflowDonInfo,
 		[]commoncap.DON{triggerDonInfo.DON, targetDonInfo.DON},
 		donContext)
 
 	workflowDon.AddOCR3NonStandardCapability(ctx, t)
 	workflowDon.Initialise()
-
-	forwarderAddr, _ := SetupForwarderContract(t, workflowDon, donContext.EthBlockchain)
-	consumerAddr, consumer := SetupConsumerContract(t, donContext.EthBlockchain, forwarderAddr, workflowOwnerID, workflowName)
-
-	job := getJob(t, workflowName, workflowOwnerID, consumerAddr)
-	workflowDon.AddJob(&job)
-
-	writeTargetDon := framework.NewDON(ctx, t, lggr, targetDonInfo,
-		[]commoncap.DON{}, donContext)
-	err := writeTargetDon.AddEthereumWriteTargetNonStandardCapability(forwarderAddr)
-	require.NoError(t, err)
-	writeTargetDon.Initialise()
-
-	sink := framework.NewReportsSink()
-
-	triggerDon := framework.NewDON(ctx, t, lggr, triggerDonInfo,
-		[]commoncap.DON{}, donContext)
-
-	triggerDon.AddTriggerCapability(sink)
-	triggerDon.Initialise()
-
-	triggerDon.Start(ctx, t)
-	writeTargetDon.Start(ctx, t)
-	workflowDon.Start(ctx, t)
-
-	servicetest.Run(t, sink)
-	return consumer, sink
+	return workflowDon
 }
 
 func createFeedReport(t *testing.T, price *big.Int, observationTimestamp int64,

@@ -111,6 +111,7 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig Don
 	return don
 }
 
+// Initialise must be called after all capabilities have been added to the DON and before Start is called
 func (d *DON) Initialise() {
 	id := d.capabilitiesRegistry.setupDON(d.config, d.capabilities)
 	d.config.DON.ID = uint32(id)
