@@ -27,6 +27,7 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/services/job"
 	"github.com/smartcontractkit/chainlink/v2/core/services/keystore/keys/ethkey"
 	"github.com/smartcontractkit/chainlink/v2/core/services/keystore/keys/ocr2key"
+	p2ptypes "github.com/smartcontractkit/chainlink/v2/core/services/p2p/types"
 	"github.com/smartcontractkit/libocr/offchainreporting2plus/ocr3types"
 )
 
@@ -40,9 +41,8 @@ type CapabilityNode struct {
 }
 
 type DON struct {
-	info                 DonInfo
+	config               DonConfiguration
 	lggr                 logger.Logger
-	name                 string
 	nodes                []*CapabilityNode
 	jobs                 []*job.Job
 	capabilities         []capability
@@ -55,33 +55,33 @@ type DON struct {
 	triggerFactories []triggerFactory
 }
 
-func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonInfo, broker *testAsyncMessageBroker,
+func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donConfig DonConfiguration, broker *testAsyncMessageBroker,
 	dependentDONs []commoncap.DON, ethBackend *ethBlockchain, capabilitiesRegistry *CapabilitiesRegistry) *DON {
 
-	don := &DON{lggr: lggr.Named(donInfo.name), name: donInfo.name, info: donInfo, capabilitiesRegistry: capabilitiesRegistry}
+	don := &DON{lggr: lggr.Named(donConfig.name), config: donConfig, capabilitiesRegistry: capabilitiesRegistry}
 
-	for i, member := range donInfo.Members {
+	for i, member := range donConfig.Members {
 		dispatcher := broker.NewDispatcherForNode(member)
 		capabilityRegistry := capabilities.NewRegistry(lggr)
 
 		nodeInfo := commoncap.Node{
 			PeerID:         &member,
-			WorkflowDON:    donInfo.DON,
+			WorkflowDON:    donConfig.DON,
 			CapabilityDONs: dependentDONs,
 		}
 
 		cn := &CapabilityNode{
 			registry:  capabilityRegistry,
-			key:       donInfo.keys[i],
-			KeyBundle: donInfo.KeyBundles[i],
-			peerID:    donInfo.peerIDs[i],
+			key:       donConfig.keys[i],
+			KeyBundle: donConfig.KeyBundles[i],
+			peerID:    donConfig.peerIDs[i],
 		}
 		don.nodes = append(don.nodes, cn)
 
 		cn.start = func() {
-			node := startNewNode(ctx, t, lggr.Named(donInfo.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capabilitiesRegistry.getAddress(), dispatcher,
+			node := startNewNode(ctx, t, lggr.Named(donConfig.name+"-"+strconv.Itoa(i)), nodeInfo, ethBackend, capabilitiesRegistry.getAddress(), dispatcher,
 				testPeerWrapper{peer: testPeer{member}}, capabilityRegistry,
-				donInfo.keys[i], func(c *chainlink.Config) {
+				donConfig.keys[i], func(c *chainlink.Config) {
 					if don.nodeConfigModifier != nil {
 						don.nodeConfigModifier(c, cn)
 					}
@@ -96,7 +96,55 @@ func NewDON(ctx context.Context, t *testing.T, lggr logger.Logger, donInfo DonIn
 }
 
 func (d *DON) Initialise() {
-	d.capabilitiesRegistry.setupDON(d.info, d.capabilities)
+	id := d.capabilitiesRegistry.setupDON(d.config, d.capabilities)
+	fmt.Printf("DON ID: %d\n", id)
+	//d.config.DON.ID = uint32(id)
+}
+
+type DonParams struct {
+	Name             string
+	ID               uint32
+	NumNodes         int
+	F                uint8
+	AcceptsWorkflows bool
+}
+
+func NewDonConfiguration(don DonParams) (DonConfiguration, error) {
+	keyBundles, peerIDs, err := getKeyBundlesAndPeerIDs(don.NumNodes)
+	if err != nil {
+		return DonConfiguration{}, fmt.Errorf("failed to get key bundles and peer IDs: %w", err)
+	}
+
+	donPeers := make([]p2ptypes.PeerID, len(peerIDs))
+	var donKeys []ethkey.KeyV2
+	for i := 0; i < len(peerIDs); i++ {
+		peerID := p2ptypes.PeerID{}
+		err = peerID.UnmarshalText([]byte(peerIDs[i].PeerID))
+		if err != nil {
+			return DonConfiguration{}, fmt.Errorf("failed to unmarshal peer ID: %w", err)
+		}
+		donPeers[i] = peerID
+		newKey, err := ethkey.NewV2()
+		if err != nil {
+			return DonConfiguration{}, fmt.Errorf("failed to create key: %w", err)
+		}
+		donKeys = append(donKeys, newKey)
+	}
+
+	donConfiguration := DonConfiguration{
+		DON: commoncap.DON{
+			ID:               don.ID,
+			Members:          donPeers,
+			F:                don.F,
+			ConfigVersion:    1,
+			AcceptsWorkflows: don.AcceptsWorkflows,
+		},
+		name:       don.Name,
+		peerIDs:    peerIDs,
+		keys:       donKeys,
+		KeyBundles: keyBundles,
+	}
+	return donConfiguration, nil
 }
 
 func (d *DON) Start(ctx context.Context, t *testing.T) {
@@ -113,11 +161,11 @@ func (d *DON) Start(ctx context.Context, t *testing.T) {
 	}
 
 	if d.addOCR3NonStandardCapability {
-		libocr := NewMockLibOCR(t, d.info.F, 1*time.Second)
+		libocr := NewMockLibOCR(t, d.config.F, 1*time.Second)
 		servicetest.Run(t, libocr)
 
 		for _, node := range d.nodes {
-			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.info.F, node.KeyBundle)
+			addOCR3Capability(ctx, t, d.lggr, node.registry, libocr, d.config.F, node.KeyBundle)
 		}
 	}
 
@@ -138,7 +186,7 @@ func (d *DON) AddTriggerCapability(triggerFactory triggerFactory) {
 			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
 			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
 			// F + 1
-			MinResponsesToAggregate: uint32(d.info.F) + 1,
+			MinResponsesToAggregate: uint32(d.config.F) + 1,
 		},
 	}
 

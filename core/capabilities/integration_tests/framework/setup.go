@@ -40,7 +40,7 @@ var (
 	workflowOwnerID = "0100000000000000000000000000000000000001"
 )
 
-type DonInfo struct {
+type DonConfiguration struct {
 	commoncap.DON
 	name             string
 	keys             []ethkey.KeyV2
@@ -49,7 +49,8 @@ type DonInfo struct {
 	acceptsWorkflows bool
 }
 
-func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonInfo, triggerDonInfo DonInfo, targetDonInfo DonInfo,
+func SetupDons(ctx context.Context, t *testing.T, workflowDonInfo DonConfiguration, triggerDonInfo DonConfiguration,
+	targetDonInfo DonConfiguration,
 	getJob func(t *testing.T,
 		workflowName string,
 		workflowOwner string,
@@ -147,52 +148,17 @@ func startNewNode(ctx context.Context,
 		dispatcher, peerWrapper, localCapabilities, keyV2, lggr)
 }
 
-type Don struct {
-	Name             string
-	ID               uint32
-	NumNodes         int
-	F                uint8
-	AcceptsWorkflows bool
-}
-
-func CreateDonInfo(t *testing.T, don Don) DonInfo {
-	keyBundles, peerIDs := getKeyBundlesAndPeerIDs(t, don.NumNodes)
-
-	donPeers := make([]p2ptypes.PeerID, len(peerIDs))
-	var donKeys []ethkey.KeyV2
-	for i := 0; i < len(peerIDs); i++ {
-		peerID := p2ptypes.PeerID{}
-		require.NoError(t, peerID.UnmarshalText([]byte(peerIDs[i].PeerID)))
-		donPeers[i] = peerID
-		newKey, err := ethkey.NewV2()
-		require.NoError(t, err)
-		donKeys = append(donKeys, newKey)
-	}
-
-	donInfo := DonInfo{
-		DON: commoncap.DON{
-			ID:               don.ID,
-			Members:          donPeers,
-			F:                don.F,
-			ConfigVersion:    1,
-			AcceptsWorkflows: don.AcceptsWorkflows,
-		},
-		name:       don.Name,
-		peerIDs:    peerIDs,
-		keys:       donKeys,
-		KeyBundles: keyBundles,
-	}
-	return donInfo
-}
-
-func getKeyBundlesAndPeerIDs(t *testing.T, numNodes int) ([]ocr2key.KeyBundle, []peer) {
+func getKeyBundlesAndPeerIDs(numNodes int) ([]ocr2key.KeyBundle, []peer, error) {
 	var keyBundles []ocr2key.KeyBundle
 	var donPeerIDs []peer
 	for i := 0; i < numNodes; i++ {
 		peerID := NewPeerID()
 
 		keyBundle, err := ocr2key.New(chaintype.EVM)
-		require.NoError(t, err)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create key bundle: %w", err)
+		}
+
 		keyBundles = append(keyBundles, keyBundle)
 
 		pk := keyBundle.PublicKey()
@@ -204,7 +170,7 @@ func getKeyBundlesAndPeerIDs(t *testing.T, numNodes int) ([]ocr2key.KeyBundle, [
 
 		donPeerIDs = append(donPeerIDs, p)
 	}
-	return keyBundles, donPeerIDs
+	return keyBundles, donPeerIDs, nil
 }
 
 type testPeerWrapper struct {

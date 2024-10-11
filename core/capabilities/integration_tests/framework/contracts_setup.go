@@ -17,7 +17,7 @@ import (
 	kcr "github.com/smartcontractkit/chainlink/v2/core/gethwrappers/keystone/generated/capabilities_registry"
 )
 
-func setupForwarderContract(t *testing.T, workflowDon DonInfo,
+func setupForwarderContract(t *testing.T, workflowDon DonConfiguration,
 	backend *ethBlockchain) (common.Address, *forwarder.KeystoneForwarder) {
 	addr, _, fwd, err := forwarder.DeployKeystoneForwarder(backend.transactionOpts, backend)
 	require.NoError(t, err)

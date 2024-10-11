@@ -2,14 +2,11 @@ package framework
 
 import (
 	"context"
-	"time"
-
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/smartcontractkit/chainlink-common/pkg/capabilities/pb"
 	"github.com/smartcontractkit/chainlink-common/pkg/values"
@@ -33,6 +30,7 @@ type CapabilitiesRegistry struct {
 	contract       *kcr.CapabilitiesRegistry
 	addr           common.Address
 	nodeOperatorID uint32
+	nextDonID      int
 }
 
 func NewCapabilitiesRegistry(ctx context.Context, t *testing.T, backend *ethBlockchain) *CapabilitiesRegistry {
@@ -76,83 +74,19 @@ type capability struct {
 	registryConfig      kcr.CapabilitiesRegistryCapability
 }
 
-func (r *CapabilitiesRegistry) setupTargetDon(targetDon DonInfo) {
-
-	writeChain := kcr.CapabilitiesRegistryCapability{
-		LabelledName:   "write_geth-testnet",
-		Version:        "1.0.0",
-		CapabilityType: CapabilityTypeTarget,
-	}
-
-	targetCapabilityConfig := newCapabilityConfig()
-
-	configWithLimit, err := values.WrapMap(map[string]any{"gasLimit": 500000})
-	require.NoError(r.t, err)
-
-	targetCapabilityConfig.DefaultConfig = values.Proto(configWithLimit).GetMapValue()
-
-	targetCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTargetConfig{
-		RemoteTargetConfig: &pb.RemoteTargetConfig{
-			RequestHashExcludedAttributes: []string{"signed_report.Signatures"},
-		},
-	}
-
-	r.setupDON(targetDon, []capability{{
-		donCapabilityConfig: targetCapabilityConfig,
-		registryConfig:      writeChain,
-	}})
-}
-
-func (r *CapabilitiesRegistry) setupTriggerDON(triggerDon DonInfo) {
-
-	triggerCapabilityConfig := newCapabilityConfig()
-	triggerCapabilityConfig.RemoteConfig = &pb.CapabilityConfig_RemoteTriggerConfig{
-		RemoteTriggerConfig: &pb.RemoteTriggerConfig{
-			RegistrationRefresh: durationpb.New(1000 * time.Millisecond),
-			RegistrationExpiry:  durationpb.New(60000 * time.Millisecond),
-			// F + 1
-			MinResponsesToAggregate: uint32(triggerDon.F) + 1,
-		},
-	}
-
-	streamsTriggerCapability := capability{
-		donCapabilityConfig: triggerCapabilityConfig,
-		registryConfig: kcr.CapabilitiesRegistryCapability{
-			LabelledName:   "streams-trigger",
-			Version:        "1.0.0",
-			CapabilityType: CapabilityTypeTrigger,
-		},
-	}
-
-	r.setupDON(triggerDon, []capability{streamsTriggerCapability})
-}
-
-func (r *CapabilitiesRegistry) setupWorkflowDon(workflowDon DonInfo) {
-
-	ocr := kcr.CapabilitiesRegistryCapability{
-		LabelledName:   "offchain_reporting",
-		Version:        "1.0.0",
-		CapabilityType: CapabilityTypeConsensus,
-	}
-
-	r.setupDON(workflowDon, []capability{{
-		donCapabilityConfig: newCapabilityConfig(),
-		registryConfig:      ocr,
-	}})
-}
-
-func (r *CapabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capability) {
+// SetupDON sets up a new DON with the given capabilities and returns the DON ID
+func (r *CapabilitiesRegistry) setupDON(donInfo DonConfiguration, capabilities []capability) int {
 
 	var hashedCapabilityIDs [][32]byte
 
-	for _, c := range capabilites {
+	for _, c := range capabilities {
 		id, err := r.contract.GetHashedCapabilityId(&bind.CallOpts{}, c.registryConfig.LabelledName, c.registryConfig.Version)
 		require.NoError(r.t, err)
 		hashedCapabilityIDs = append(hashedCapabilityIDs, id)
 	}
 
 	var registryCapabilities []kcr.CapabilitiesRegistryCapability
-	for _, c := range capabilites {
+	for _, c := range capabilities {
 		registryCapabilities = append(registryCapabilities, c.registryConfig)
 	}
 
@@ -178,7 +112,7 @@ func (r *CapabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 	require.NoError(r.t, err)
 
 	var capabilityConfigurations []kcr.CapabilitiesRegistryCapabilityConfiguration
-	for i, c := range capabilites {
+	for i, c := range capabilities {
 
 		configBinary, err := proto.Marshal(c.donCapabilityConfig)
 		require.NoError(r.t, err)
@@ -193,6 +127,8 @@ func (r *CapabilitiesRegistry) setupDON(donInfo DonInfo, capabilites []capabilit
 	require.NoError(r.t, err)
 	r.backend.Commit()
 
+	r.nextDonID++
+	return r.nextDonID
 }
 
 func newCapabilityConfig() *pb.CapabilityConfig {

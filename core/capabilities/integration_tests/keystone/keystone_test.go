@@ -26,9 +26,12 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 2, NumNodes: 7, F: 2, AcceptsWorkflows: true})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Trigger", ID: 1, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Target", ID: 3, NumNodes: 4, F: 1})
+	workflowDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Workflow", ID: 2, NumNodes: 7, F: 2, AcceptsWorkflows: true})
+	require.NoError(t, err)
+	triggerDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Trigger", ID: 1, NumNodes: 7, F: 2})
+	require.NoError(t, err)
+	targetDonConfiguration, err := framework.NewDonConfiguration(framework.DonParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
+	require.NoError(t, err)
 
 	feedCount := 3
 	var feedIDs []string
@@ -45,12 +48,12 @@ func Test_AllAtOnceTransmissionSchedule(t *testing.T) {
 
 	}
 
-	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonInfo, triggerDonInfo, targetDonInfo, createKeystoneWorkflowJob)
+	consumer, triggerSink := framework.SetupDons(ctx, t, workflowDonConfiguration, triggerDonConfiguration, targetDonConfiguration, createKeystoneWorkflowJob)
 
 	reports := []*datastreams.FeedReport{
-		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonInfo.KeyBundles),
-		createFeedReport(t, big.NewInt(3), 7, feedIDs[1], triggerDonInfo.KeyBundles),
-		createFeedReport(t, big.NewInt(2), 6, feedIDs[2], triggerDonInfo.KeyBundles),
+		createFeedReport(t, big.NewInt(1), 5, feedIDs[0], triggerDonConfiguration.KeyBundles),
+		createFeedReport(t, big.NewInt(3), 7, feedIDs[1], triggerDonConfiguration.KeyBundles),
+		createFeedReport(t, big.NewInt(2), 6, feedIDs[2], triggerDonConfiguration.KeyBundles),
 	}
 
 	triggerSink.SendReports(reports)
@@ -64,9 +67,9 @@ func Test_OneAtATimeTransmissionSchedule(t *testing.T) {
 
 	// The don IDs set in the below calls are inferred from the order in which the dons are added to the capabilities registry
 	// in the setupCapabilitiesRegistryContract function, should this order change the don IDs will need updating.
-	workflowDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
-	triggerDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
-	targetDonInfo := framework.CreateDonInfo(t, framework.Don{Name: "Target", ID: 3, NumNodes: 4, F: 1})
+	workflowDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Workflow", ID: 1, NumNodes: 7, F: 2})
+	triggerDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Trigger", ID: 2, NumNodes: 7, F: 2})
+	targetDonInfo := framework.CreateDonInfo(t, framework.DonParams{Name: "Target", ID: 3, NumNodes: 4, F: 1})
 
 	feedCount := 3
 	var feedIDs []string
