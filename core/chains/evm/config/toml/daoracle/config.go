@@ -5,9 +5,10 @@ import "github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 type OracleType string
 
 const (
-	OPStack  = OracleType("opstack")
-	Arbitrum = OracleType("arbitrum")
-	ZKSync   = OracleType("zksync")
+	OPStack        = OracleType("opstack")
+	Arbitrum       = OracleType("arbitrum")
+	ZKSync         = OracleType("zksync")
+	CustomCalldata = OracleType("custom_calldata")
 )
 
 type DAOracle struct {
